@@ -39,8 +39,8 @@ services:
     environment:
       MYSQL_DATABASE: laravel
       MYSQL_USER: laravel_user
-      MYSQL_PASSWORD: ${DB_PASSWORD}              # From GitLab CI/CD
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # From GitLab CI/CD
+      MYSQL_PASSWORD: ${DB_PASSWORD}              
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} 
     volumes:
       - dbdata:/var/lib/mysql
 
