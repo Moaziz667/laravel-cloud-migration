@@ -38,7 +38,9 @@ build_app:
 ########################
 terraform_apply:
   stage: infrastructure
-  image: hashicorp/terraform:1.13.0-alpha20250623
+  image: 
+    name: hashicorp/terraform:light
+    entrypoint: [""]
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
