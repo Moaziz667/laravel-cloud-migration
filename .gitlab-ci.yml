@@ -70,7 +70,7 @@ deploy_app:
   script:
     - EC2_IP=$(cat ec2_ip.txt)
 
-    - ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP <<EOF
+    - ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP <<EOF
         sudo yum update -y &&
         sudo yum install -y docker &&
         sudo systemctl start docker &&
@@ -81,7 +81,7 @@ deploy_app:
 
     - scp docker-compose.yml .env.template ec2-user@$EC2_IP:/home/ec2-user/
 
-    - ssh ec2-user@$EC2_IP <<EOF
+    - ssh ubuntu@$EC2_IP <<EOF
         export APP_KEY="$APP_KEY"
         export DB_PASSWORD="$DB_PASSWORD"
         export MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD"
