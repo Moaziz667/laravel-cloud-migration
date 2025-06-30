@@ -1,0 +1,115 @@
+image: docker:24.0
+
+services:
+  - docker:dind
+
+variables:
+  PHP_IMAGE: azizhk444/app
+  NGINX_IMAGE: azizhk444/nginx
+  MYSQL_IMAGE: mysql:8.0
+
+stages:
+  - build
+  - infrastructure
+  - deploy
+  - destroy
+
+####################
+# 🔨 Build Docker Images
+####################
+build_app:
+  stage: build
+  before_script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+  script:
+    - docker build -t $PHP_IMAGE -f php.dockerfile .
+    - docker push $PHP_IMAGE
+
+    - docker build -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
+    - docker push $NGINX_IMAGE
+  only:
+    - main
+  tags:
+    - my-vps
+
+########################
+# 🌍 Terraform Apply (Provision Infra)
+########################
+terraform_apply:
+  stage: infrastructure
+  image: hashicorp/terraform:1.5.7
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+  script:
+    - cd infra  
+    - terraform init
+    - terraform apply -auto-approve
+    - terraform output -raw k3s_node_public_ip > ec2_ip.txt
+  artifacts:
+    paths:
+      - terraform/ec2_ip.txt
+  only:
+    - main  
+  tags:
+    - my-vps
+
+####################
+# 🚀 Deploy to EC2 with Docker Compose
+####################
+deploy_app:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh sshpass
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - EC2_IP=$(cat terraform/ec2_ip.txt)
+
+    # 🛠️ Install Docker & Docker Compose
+    - ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP <<EOF
+        sudo yum update -y &&
+        sudo yum install -y docker &&
+        sudo systemctl start docker &&
+        sudo usermod -aG docker ec2-user &&
+        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose &&
+        sudo chmod +x /usr/local/bin/docker-compose
+      EOF
+
+    # 🐳 Send Docker Compose files & .env.template
+    - scp docker-compose.yml .env.template ec2-user@$EC2_IP:/home/ec2-user/
+
+    # 🔧 Generate .env
+    - |
+      ssh ec2-user@$EC2_IP <<EOF
+        export APP_KEY="$APP_KEY"
+        export DB_PASSWORD="$DB_PASSWORD"
+        export MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD"
+        envsubst < /home/ec2-user/.env.template > /home/ec2-user/.env
+        docker-compose -f /home/ec2-user/docker-compose.yml up -d
+      EOF
+  dependencies:
+    - terraform_apply
+  only:
+    - main
+  tags:
+    - my-vps
+
+####################
+# 💣 Terraform Destroy (Clean-up) eee
+####################
+terraform_destroy:
+  stage: destroy
+  image: hashicorp/terraform:1.5.7
+  script:
+    - cd terraform
+    - terraform init
+    - terraform destroy -auto-approve
+  only:
+    - destroy
+  tags:
+    - my-vps

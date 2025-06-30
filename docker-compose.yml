@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  app:
+    image: azizhk444/app:latest
+    container_name: app
+    environment:
+      # Safe hardcoded values
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: http://localhost
+
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: laravel
+      DB_USERNAME: laravel_user
+
+      # Secrets (values from GitLab CI/CD -> used in .env.template via entrypoint)
+      APP_KEY: ${APP_KEY}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    depends_on:
+      - db
+
+  nginx:
+    image: azizhk444/nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.0
+    container_name: db
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_USER: laravel_user
+      MYSQL_PASSWORD: ${DB_PASSWORD}              # From GitLab CI/CD
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} # From GitLab CI/CD
+    volumes:
+      - dbdata:/var/lib/mysql
+
+volumes:
+  dbdata:
