@@ -98,7 +98,7 @@ deploy_app:
         docker-compose pull
         docker-compose up -d --remove-orphans
 
-        sleep 10
+        sleep 30
         docker exec app php artisan migrate --force
       "
   dependencies:
