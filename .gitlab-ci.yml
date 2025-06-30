@@ -17,23 +17,23 @@ stages:
   - deploy
   - destroy
 
-#################### Build Stage ####################
+#################### 🔨 Build Stage ####################
 build_app:
   stage: build
   before_script:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
     - docker pull $PHP_IMAGE || true
-    - docker build --cache-from $PHP_IMAGE -t $PHP_IMAGE -f php.dockerfile .
+    - docker build -t $PHP_IMAGE -f php.dockerfile .
     - docker push $PHP_IMAGE
 
     - docker pull $NGINX_IMAGE || true
-    - docker build --cache-from $NGINX_IMAGE -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
+    - docker build -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
     - docker push $NGINX_IMAGE
   only:
     - main
 
-#################### Terraform Apply ####################
+#################### ☁️ Terraform Apply (Infra) ####################
 terraform_apply:
   stage: infrastructure
   image:
@@ -43,52 +43,64 @@ terraform_apply:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io  # Terraform Cloud token
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
     - cd infra
     - terraform init
     - terraform apply -auto-approve
-    - terraform output -raw k3s_node_public_ip > ../ec2_ip.txt  # Save at root, not inside 'infra'
+    - terraform output -raw k3s_node_public_ip > ../ec2_ip.txt
   artifacts:
     paths:
-      - ec2_ip.txt   # FIXED path
+      - ec2_ip.txt
   only:
     - main
   tags:
     - my-vps
 
-#################### Deploy Stage ####################
+#################### 🚀 Deploy Stage ####################
 deploy_app:
   stage: deploy
   image: alpine:latest
   before_script:
-    - apk add --no-cache openssh sshpass
+    - apk add --no-cache openssh sshpass curl docker-compose
     - mkdir -p ~/.ssh
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - EC2_IP=$(cat ec2_ip.txt)
+    - export EC2_IP=$(cat ec2_ip.txt)
+
+    # Prepare EC2 for Docker
     - |
-      ssh -o StrictHostKeyChecking=no ubuntu@$EC2_IP <<'EOF'
-        sudo apt update -y
-        sudo apt install -y docker.io
-        sudo systemctl start docker
-        sudo usermod -aG docker ubuntu
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+      ssh ubuntu@$EC2_IP "
+        sudo apt update -y &&
+        sudo apt install -y docker.io &&
+        sudo systemctl start docker &&
+        sudo usermod -aG docker ubuntu &&
+        sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) -o /usr/local/bin/docker-compose &&
         sudo chmod +x /usr/local/bin/docker-compose
-      EOF
+      "
 
-
+    # Upload config files
     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
-    - ssh ubuntu@$EC2_IP << 'EOF'
-      export APP_KEY="${APP_KEY}"
-      export DB_PASSWORD="${DB_PASSWORD}"
-      export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD}"
 
-      envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
-      docker-compose -f /home/ubuntu/docker-compose.yml up -d
-     EOF
+    # Generate .env and deploy containers
+    - |
+      ssh ubuntu@$EC2_IP "
+        export APP_KEY='$APP_KEY'
+        export DB_PASSWORD='$DB_PASSWORD'
+        export MYSQL_ROOT_PASSWORD='$MYSQL_ROOT_PASSWORD'
+
+        envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
+
+        cd /home/ubuntu
+        docker-compose down
+        docker-compose pull
+        docker-compose up -d --remove-orphans
+
+        sleep 10
+        docker exec app php artisan migrate --force
+      "
   dependencies:
     - terraform_apply
   only:
@@ -96,7 +108,7 @@ deploy_app:
   tags:
     - my-vps
 
-#################### Destroy Infra ####################
+#################### 💣 Destroy Infra ####################
 terraform_destroy:
   stage: destroy
   image:
