@@ -81,14 +81,14 @@ deploy_app:
 
 
     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
+    - ssh ubuntu@$EC2_IP << 'EOF'
+      export APP_KEY="${APP_KEY}"
+      export DB_PASSWORD="${DB_PASSWORD}"
+      export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD}"
 
-    - ssh ubuntu@$EC2_IP <<EOF
-        export APP_KEY="$APP_KEY"
-        export DB_PASSWORD="$DB_PASSWORD"
-        export MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD"
-        envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
-        docker-compose -f /home/ubuntu/docker-compose.yml up -d
-      EOF
+      envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
+      docker-compose -f /home/ubuntu/docker-compose.yml up -d
+     EOF
   dependencies:
     - terraform_apply
   only:
