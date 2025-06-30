@@ -37,7 +37,7 @@ build_app:
 ########################
 terraform_apply:
   stage: infrastructure
-  image: hashicorp/terraform:1.5.7
+  image: hashicorp/terraform:1.5.7-alpine
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
