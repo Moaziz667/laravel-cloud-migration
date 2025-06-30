@@ -54,7 +54,7 @@ resource "aws_subnet" "private_subnet" {
 resource "aws_subnet" "private_subnet_2" {
   vpc_id            = aws_vpc.main_vpc.id
   cidr_block        = "10.0.102.0/24"        # Example CIDR, adjust as needed
-  availability_zone = "eu-north-1b"          # Different AZ for high availability
+  availability_zone = "eu-north-1c"          # Different AZ for high availability
 
   tags = {
     Name = "private-subnet-2"
@@ -140,29 +140,8 @@ resource "aws_instance" "laravel_app" {
   vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
   associate_public_ip_address = true
 
-  user_data = <<-EOF
-#!/bin/bash
-apt-get update && apt-get upgrade -y
+ 
 
-apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
-
-apt-get update
-apt-get install -y docker-ce docker-ce-cli containerd.io
-
-systemctl start docker
-systemctl enable docker
-
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik" sh -
-
-mkdir -p /home/ubuntu/.kube
-cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
-chown ubuntu:ubuntu /home/ubuntu/.kube/config
-
-until k3s kubectl get nodes; do echo "Waiting for k3s..."; sleep 5; done
-EOF
 
   tags = {
     Name = "laravel-app-instance"
