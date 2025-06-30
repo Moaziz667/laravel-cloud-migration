@@ -6,6 +6,7 @@ services:
 variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
+  DOCKER_BUILDKIT: 1
   PHP_IMAGE: azizhk444/app
   NGINX_IMAGE: azizhk444/nginx
   MYSQL_IMAGE: mysql:8.0
@@ -24,15 +25,13 @@ build_app:
   before_script:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
-    - docker build -t $PHP_IMAGE -f php.dockerfile .
+    - docker pull $PHP_IMAGE || true  # Try pulling old image for caching
+    - docker build --cache-from $PHP_IMAGE -t $PHP_IMAGE -f php.dockerfile .
     - docker push $PHP_IMAGE
 
-    - docker build -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
+    - docker pull $NGINX_IMAGE || true
+    - docker build --cache-from $NGINX_IMAGE -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
     - docker push $NGINX_IMAGE
-  only:
-    - main
-  tags:
-    - my-vps
 
 ########################
 # 🌍 Terraform Apply (Provision Infra)
