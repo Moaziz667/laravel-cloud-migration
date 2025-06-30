@@ -12,7 +12,8 @@ variables:
   MYSQL_IMAGE: mysql:8.0
 
 stages:
-
+  - build
+  - infrastructure
   - deploy
   - destroy
 
