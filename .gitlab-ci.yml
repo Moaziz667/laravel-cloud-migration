@@ -4,6 +4,8 @@ services:
   - docker:dind
 
 variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
   PHP_IMAGE: azizhk444/app
   NGINX_IMAGE: azizhk444/nginx
   MYSQL_IMAGE: mysql:8.0
