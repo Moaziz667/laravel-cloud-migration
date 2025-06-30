@@ -17,50 +17,47 @@ stages:
   - deploy
   - destroy
 
-####################
-# 🔨 Build Docker Images
-####################
+#################### Build Stage ####################
 build_app:
   stage: build
   before_script:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
-    - docker pull $PHP_IMAGE || true  # Try pulling old image for caching
+    - docker pull $PHP_IMAGE || true
     - docker build --cache-from $PHP_IMAGE -t $PHP_IMAGE -f php.dockerfile .
     - docker push $PHP_IMAGE
 
     - docker pull $NGINX_IMAGE || true
     - docker build --cache-from $NGINX_IMAGE -t $NGINX_IMAGE -f nginx/nginx.dockerfile .
     - docker push $NGINX_IMAGE
+  only:
+    - main
 
-########################
-# 🌍 Terraform Apply (Provision Infra)
-########################
+#################### Terraform Apply ####################
 terraform_apply:
   stage: infrastructure
-  image: 
+  image:
     name: hashicorp/terraform:light
     entrypoint: [""]
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io  # Terraform Cloud token
   script:
-    - cd infra  
+    - cd infra
     - terraform init
     - terraform apply -auto-approve
-    - terraform output -raw k3s_node_public_ip > ec2_ip.txt
+    - terraform output -raw k3s_node_public_ip > ../ec2_ip.txt  # Save at root, not inside 'infra'
   artifacts:
     paths:
-      - terraform/ec2_ip.txt
+      - ec2_ip.txt   # FIXED path
   only:
-    - main  
+    - main
   tags:
     - my-vps
 
-####################
-# 🚀 Deploy to EC2 with Docker Compose
-####################
+#################### Deploy Stage ####################
 deploy_app:
   stage: deploy
   image: alpine:latest
@@ -71,9 +68,8 @@ deploy_app:
     - chmod 600 ~/.ssh/id_rsa
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - EC2_IP=$(cat terraform/ec2_ip.txt)
+    - EC2_IP=$(cat ec2_ip.txt)
 
-    # 🛠️ Install Docker & Docker Compose
     - ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP <<EOF
         sudo yum update -y &&
         sudo yum install -y docker &&
@@ -83,12 +79,9 @@ deploy_app:
         sudo chmod +x /usr/local/bin/docker-compose
       EOF
 
-    # 🐳 Send Docker Compose files & .env.template
     - scp docker-compose.yml .env.template ec2-user@$EC2_IP:/home/ec2-user/
 
-    # 🔧 Generate .env
-    - |
-      ssh ec2-user@$EC2_IP <<EOF
+    - ssh ec2-user@$EC2_IP <<EOF
         export APP_KEY="$APP_KEY"
         export DB_PASSWORD="$DB_PASSWORD"
         export MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD"
@@ -102,14 +95,19 @@ deploy_app:
   tags:
     - my-vps
 
-####################
-# 💣 Terraform Destroy (Clean-up) eee
-####################
+#################### Destroy Infra ####################
 terraform_destroy:
   stage: destroy
-  image: hashicorp/terraform:1.5.7
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
-    - cd terraform
+    - cd infra
     - terraform init
     - terraform destroy -auto-approve
   only:

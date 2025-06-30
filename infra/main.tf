@@ -1,3 +1,14 @@
+
+terraform { 
+  cloud { 
+    
+    organization = "Asm_aziz_stage" 
+
+    workspaces { 
+      name = "deploy-infra" 
+    } 
+  } 
+}
 # Create the main VPC with DNS support and hostnames enabled
 resource "aws_vpc" "main_vpc" {
   cidr_block           = var.vpc_cidr
