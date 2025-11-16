@@ -122,12 +122,6 @@ terraform_apply:
   tags:
     - my-vps
 
-# ----------------------------
-# Deploy to EC2 (with health-check)
-# ----------------------------
-# -------------------------------
-# DEPLOY TO EC2
-# -------------------------------
 deploy_app:
   stage: deploy
   image: alpine:latest
@@ -146,24 +140,23 @@ deploy_app:
 
   script:
     - set -euo pipefail
-
     - export EC2_IP=$(cat ec2_ip.txt)
     - echo "Deploying to EC2 → $EC2_IP"
 
     # -------------------------------
-    # 1. Prepare remote server
+    # 1. Install Docker + login
     # -------------------------------
     - |
       ssh ubuntu@$EC2_IP "
         set -e
 
-        echo '--- INSTALLING DOCKER ---'
+        echo '--- INSTALL DOCKER ---'
         sudo apt-get update -y
         sudo apt-get install -y docker.io curl
         sudo systemctl enable --now docker
         sudo usermod -aG docker ubuntu || true
 
-        echo '--- INSTALLING DOCKER COMPOSE ---'
+        echo '--- INSTALL DOCKER COMPOSE ---'
         if [ ! -f /usr/local/bin/docker-compose ]; then
           sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) \
             -o /usr/local/bin/docker-compose
@@ -171,23 +164,20 @@ deploy_app:
         fi
 
         echo '--- DOCKER LOGIN ---'
-        echo \"${DOCKER_PASSWORD}\" | sudo docker login -u \"${DOCKER_USERNAME}\" --password-stdin docker.io || exit 1
+        echo '${DOCKER_PASSWORD}' | sudo docker login -u '${DOCKER_USERNAME}' --password-stdin docker.io
 
-        echo '--- VERIFY LOGIN ---'
-        sudo docker info | grep Username || (echo '❌ Docker login FAILED on EC2' && exit 1)
-
+        sudo docker info | grep Username || (echo '❌ Docker login failed' && exit 1)
         echo 'Docker login OK'
       "
 
     # -------------------------------
-    # 2. Upload compose + env files
+    # 2. Upload compose + env
     # -------------------------------
     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
 
     - |
       ssh ubuntu@$EC2_IP "
         set -e
-        echo '--- Generating .env file ---'
         export APP_KEY='${APP_KEY}'
         export DB_PASSWORD='${DB_PASSWORD}'
         export MYSQL_ROOT_PASSWORD='${MYSQL_ROOT_PASSWORD}'
@@ -196,22 +186,49 @@ deploy_app:
       "
 
     # -------------------------------
-    # 3. Pull & restart services
+    # 3. Start containers
     # -------------------------------
     - |
       ssh ubuntu@$EC2_IP "
         set -e
         cd /home/ubuntu
 
-        echo '--- PULLING IMAGES ---'
-        sudo docker-compose pull || exit 1
+        echo '--- PULL IMAGES ---'
+        sudo docker-compose pull
 
-        echo '--- STARTING CONTAINERS ---'
+        echo '--- START CONTAINERS ---'
         sudo docker-compose up -d --remove-orphans
       "
 
     # -------------------------------
-    # 4. Health check
+    # 4. WAIT FOR MYSQL FIRST
+    # -------------------------------
+    - |
+      ssh ubuntu@$EC2_IP "
+        set -e
+        echo 'Waiting for MySQL to initialize...'
+
+        for i in {1..40}; do
+          STATUS=\$(sudo docker inspect --format='{{.State.Status}}' db 2>/dev/null || echo starting)
+          HEALTH=\$(sudo docker inspect --format='{{.State.Health.Status}}' db 2>/dev/null || echo starting)
+          echo \"DB: status=\$STATUS health=\$HEALTH\"
+
+          if [ \"\$STATUS\" = running ] && [ \"\$HEALTH\" = healthy ]; then
+            echo 'MySQL ready ✓'
+            break
+          fi
+
+          sleep 3
+          if [ \$i -eq 40 ]; then
+            echo '❌ MySQL failed to start'
+            sudo docker logs db
+            exit 1
+          fi
+        done
+      "
+
+    # -------------------------------
+    # 5. NOW wait for app health
     # -------------------------------
     - |
       ssh ubuntu@$EC2_IP "
@@ -220,22 +237,24 @@ deploy_app:
 
         for i in {1..40}; do
           STATUS=\$(sudo docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo starting)
-          echo \"Status: \$STATUS\"
+          echo \"APP: \$STATUS\"
+
           if [ \"\$STATUS\" = healthy ]; then
-            echo 'App is healthy'
+            echo 'App is healthy ✓'
             break
           fi
+
           sleep 5
           if [ \$i -eq 40 ]; then
-            echo '❌ Health check failed'
-            sudo docker ps -a
+            echo '❌ App health check FAILED'
+            sudo docker logs app
             exit 1
           fi
         done
       "
 
     # -------------------------------
-    # 5. Run migrations
+    # 6. Run migrations
     # -------------------------------
     - |
       ssh ubuntu@$EC2_IP "
