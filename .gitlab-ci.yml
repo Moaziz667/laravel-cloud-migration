@@ -125,149 +125,53 @@ terraform_apply:
 deploy_app:
   stage: deploy
   image: alpine:latest
-
-  needs:
-    - terraform_apply
-    - build_php
-    - build_nginx
-
   before_script:
-    - apk add --no-cache openssh sshpass curl gettext
+    - apk add --no-cache openssh sshpass curl docker-compose
     - mkdir -p ~/.ssh
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
-    - printf "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - set -euo pipefail
     - export EC2_IP=$(cat ec2_ip.txt)
-    - echo "Deploying to EC2 → $EC2_IP"
 
-    # -------------------------------
-    # 1. Install Docker + login
-    # -------------------------------
+    # Prepare EC2 for Docker
     - |
       ssh ubuntu@$EC2_IP "
-        set -e
-
-        echo '--- INSTALL DOCKER ---'
-        sudo apt-get update -y
-        sudo apt-get install -y docker.io curl
-        sudo systemctl enable --now docker
-        sudo usermod -aG docker ubuntu || true
-
-        echo '--- INSTALL DOCKER COMPOSE ---'
-        if [ ! -f /usr/local/bin/docker-compose ]; then
-          sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) \
-            -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-        fi
-
-        echo '--- DOCKER LOGIN ---'
-        echo '${DOCKER_PASSWORD}' | sudo docker login -u '${DOCKER_USERNAME}' --password-stdin docker.io
-
-        sudo docker info | grep Username || (echo '❌ Docker login failed' && exit 1)
-        echo 'Docker login OK'
+        sudo apt update -y &&
+        sudo apt install -y docker.io &&
+        sudo systemctl start docker &&
+        sudo usermod -aG docker ubuntu &&
+        sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) -o /usr/local/bin/docker-compose &&
+        sudo chmod +x /usr/local/bin/docker-compose
       "
 
-    # -------------------------------
-    # 2. Upload compose + env
-    # -------------------------------
+    # Upload config files
     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
 
+    # Generate .env and deploy containers
     - |
       ssh ubuntu@$EC2_IP "
-        set -e
-        export APP_KEY='${APP_KEY}'
-        export DB_PASSWORD='${DB_PASSWORD}'
-        export MYSQL_ROOT_PASSWORD='${MYSQL_ROOT_PASSWORD}'
+        export APP_KEY='$APP_KEY'
+        export DB_PASSWORD='$DB_PASSWORD'
+        export MYSQL_ROOT_PASSWORD='$MYSQL_ROOT_PASSWORD'
 
         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
-      "
 
-    # -------------------------------
-    # 3. Start containers
-    # -------------------------------
-    - |
-      ssh ubuntu@$EC2_IP "
-        set -e
         cd /home/ubuntu
+        docker-compose down
+        docker-compose pull
+        docker-compose up -d --remove-orphans
 
-        echo '--- PULL IMAGES ---'
-        sudo docker-compose pull
-
-        echo '--- START CONTAINERS ---'
-        sudo docker-compose up -d --remove-orphans
+        sleep 30
+        docker exec app php artisan migrate --force
       "
-
-    # -------------------------------
-    # 4. WAIT FOR MYSQL FIRST
-    # -------------------------------
-    - |
-      ssh ubuntu@$EC2_IP "
-        set -e
-        echo 'Waiting for MySQL to initialize...'
-
-        for i in {1..40}; do
-          STATUS=\$(sudo docker inspect --format='{{.State.Status}}' db 2>/dev/null || echo starting)
-          HEALTH=\$(sudo docker inspect --format='{{.State.Health.Status}}' db 2>/dev/null || echo starting)
-          echo \"DB: status=\$STATUS health=\$HEALTH\"
-
-          if [ \"\$STATUS\" = running ] && [ \"\$HEALTH\" = healthy ]; then
-            echo 'MySQL ready ✓'
-            break
-          fi
-
-          sleep 3
-          if [ \$i -eq 40 ]; then
-            echo '❌ MySQL failed to start'
-            sudo docker logs db
-            exit 1
-          fi
-        done
-      "
-
-    # -------------------------------
-    # 5. NOW wait for app health
-    # -------------------------------
-    - |
-      ssh ubuntu@$EC2_IP "
-        set -e
-        echo 'Waiting for app container to become healthy...'
-
-        for i in {1..40}; do
-          STATUS=\$(sudo docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo starting)
-          echo \"APP: \$STATUS\"
-
-          if [ \"\$STATUS\" = healthy ]; then
-            echo 'App is healthy ✓'
-            break
-          fi
-
-          sleep 5
-          if [ \$i -eq 40 ]; then
-            echo '❌ App health check FAILED'
-            sudo docker logs app
-            exit 1
-          fi
-        done
-      "
-
-    # -------------------------------
-    # 6. Run migrations
-    # -------------------------------
-    - |
-      ssh ubuntu@$EC2_IP "
-        set -e
-        echo 'Running migrations...'
-        sudo docker exec app php artisan migrate --force
-      "
-
+  dependencies:
+    - terraform_apply
   only:
     - main
-
   tags:
     - my-vps
+
 
 
 # ----------------------------
