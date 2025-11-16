@@ -125,6 +125,9 @@ terraform_apply:
 # ----------------------------
 # Deploy to EC2 (with health-check)
 # ----------------------------
+# -------------------------------
+# DEPLOY TO EC2
+# -------------------------------
 deploy_app:
   stage: deploy
   image: alpine:latest
@@ -144,7 +147,6 @@ deploy_app:
   script:
     - set -euo pipefail
 
-    # Read EC2 IP from Terraform output
     - export EC2_IP=$(cat ec2_ip.txt)
     - echo "Deploying to EC2 → $EC2_IP"
 
@@ -155,21 +157,26 @@ deploy_app:
       ssh ubuntu@$EC2_IP "
         set -e
 
-        # Install docker
+        echo '--- INSTALLING DOCKER ---'
         sudo apt-get update -y
         sudo apt-get install -y docker.io curl
         sudo systemctl enable --now docker
         sudo usermod -aG docker ubuntu || true
 
-        # Install docker compose v2
+        echo '--- INSTALLING DOCKER COMPOSE ---'
         if [ ! -f /usr/local/bin/docker-compose ]; then
           sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) \
             -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
         fi
 
-        # Login to Docker Hub (important)
-        echo \"$DOCKER_PASSWORD\" | sudo docker login -u \"$DOCKER_USERNAME\" --password-stdin
+        echo '--- DOCKER LOGIN ---'
+        echo \"${DOCKER_PASSWORD}\" | sudo docker login -u \"${DOCKER_USERNAME}\" --password-stdin docker.io || exit 1
+
+        echo '--- VERIFY LOGIN ---'
+        sudo docker info | grep Username || (echo '❌ Docker login FAILED on EC2' && exit 1)
+
+        echo 'Docker login OK'
       "
 
     # -------------------------------
@@ -180,6 +187,7 @@ deploy_app:
     - |
       ssh ubuntu@$EC2_IP "
         set -e
+        echo '--- Generating .env file ---'
         export APP_KEY='${APP_KEY}'
         export DB_PASSWORD='${DB_PASSWORD}'
         export MYSQL_ROOT_PASSWORD='${MYSQL_ROOT_PASSWORD}'
@@ -195,8 +203,11 @@ deploy_app:
         set -e
         cd /home/ubuntu
 
-        docker-compose pull
-        docker-compose up -d --remove-orphans
+        echo '--- PULLING IMAGES ---'
+        sudo docker-compose pull || exit 1
+
+        echo '--- STARTING CONTAINERS ---'
+        sudo docker-compose up -d --remove-orphans
       "
 
     # -------------------------------
@@ -205,18 +216,19 @@ deploy_app:
     - |
       ssh ubuntu@$EC2_IP "
         set -e
-
         echo 'Waiting for app container to become healthy...'
+
         for i in {1..40}; do
-          STATUS=\$(docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo starting)
+          STATUS=\$(sudo docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo starting)
+          echo \"Status: \$STATUS\"
           if [ \"\$STATUS\" = healthy ]; then
             echo 'App is healthy'
             break
           fi
           sleep 5
           if [ \$i -eq 40 ]; then
-            echo 'Health timeout'
-            docker ps -a
+            echo '❌ Health check failed'
+            sudo docker ps -a
             exit 1
           fi
         done
@@ -228,7 +240,8 @@ deploy_app:
     - |
       ssh ubuntu@$EC2_IP "
         set -e
-        docker exec app php artisan migrate --force
+        echo 'Running migrations...'
+        sudo docker exec app php artisan migrate --force
       "
 
   only:
@@ -236,6 +249,7 @@ deploy_app:
 
   tags:
     - my-vps
+
 
 # ----------------------------
 # Destroy infra (manual)
