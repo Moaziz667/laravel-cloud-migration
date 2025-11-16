@@ -1,11 +1,8 @@
-
-
 image: docker:24.0
 
 services:
-  - docker:dind
+  - name: docker:24.0-dind
 
-# Include GitLab SAST template
 include:
   - template: Security/SAST.gitlab-ci.yml
 
@@ -13,17 +10,14 @@ variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: 1
-  DOCKER_API_VERSION: "1.44"
-
 
   # Use commit SHA for immutable tags
   PHP_IMAGE: azizhk444/app:${CI_COMMIT_SHA}
   NGINX_IMAGE: azizhk444/nginx:${CI_COMMIT_SHA}
-  # Convenience "latest" tag
+
   PHP_IMAGE_LATEST: azizhk444/app:latest
   NGINX_IMAGE_LATEST: azizhk444/nginx:latest
 
-  # Docker Hub credentials must be stored in CI variables (DOCKER_USERNAME / DOCKER_PASSWORD)
   DOCKER_REGISTRY: docker.io
 
 stages:
@@ -34,20 +28,16 @@ stages:
   - destroy
 
 # ----------------------------
-# Build PHP image (decoupled)
+# Build PHP image
 # ----------------------------
 build_php:
   stage: build
-  image: docker:24.0
   before_script:
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
-    - set -e
-    # Try to pull previous image to use as cache
     - docker pull ${PHP_IMAGE} || true
     - docker build --cache-from ${PHP_IMAGE} -t ${PHP_IMAGE} -f php.dockerfile .
     - docker push ${PHP_IMAGE}
-    # Tag and push latest convenience tag
     - docker tag ${PHP_IMAGE} ${PHP_IMAGE_LATEST}
     - docker push ${PHP_IMAGE_LATEST}
   only:
@@ -56,15 +46,13 @@ build_php:
     - my-vps
 
 # ----------------------------
-# Build Nginx image (decoupled)
+# Build Nginx image
 # ----------------------------
 build_nginx:
   stage: build
-  image: docker:24.0
   before_script:
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   script:
-    - set -e
     - docker pull ${NGINX_IMAGE} || true
     - docker build --cache-from ${NGINX_IMAGE} -t ${NGINX_IMAGE} -f nginx/nginx.dockerfile .
     - docker push ${NGINX_IMAGE}
@@ -76,21 +64,14 @@ build_nginx:
     - my-vps
 
 # ----------------------------
-# Terraform: validate & fmt
+# Terraform validate
 # ----------------------------
 terraform_validate:
   stage: infrastructure
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""] 
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+  image: hashicorp/terraform:light
   script:
-    - set -e
     - cd infra
-    - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
+    - terraform fmt -check || terraform fmt
     - terraform init -input=false -backend=false
     - terraform validate
   only:
@@ -98,20 +79,15 @@ terraform_validate:
   tags:
     - my-vps
 
+# ----------------------------
+# Terraform apply
+# ----------------------------
 terraform_apply:
   stage: infrastructure
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""] 
+  image: hashicorp/terraform:light
   needs:
     - terraform_validate
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
-    - set -e
     - cd infra
     - terraform init -input=false
     - terraform apply -auto-approve
@@ -125,7 +101,7 @@ terraform_apply:
     - my-vps
 
 # ----------------------------
-# Deploy to EC2 (with health-check)
+# Deploy to EC2 (HEREDOC — FIXED)
 # ----------------------------
 deploy_app:
   stage: deploy
@@ -141,85 +117,89 @@ deploy_app:
     - chmod 600 ~/.ssh/id_rsa
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - set -euo pipefail
     - export EC2_IP=$(cat ec2_ip.txt)
     - echo "Deploying to $EC2_IP"
-    - set +x
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-    - set -x
 
-    # Prepare remote
+    # ------------------------
+    # SSH: install docker + DOCKER LOGIN FIX
+    # ------------------------
     - |
-      ssh ubuntu@$EC2_IP "
+      ssh ubuntu@$EC2_IP << 'EOF'
         set -e
+
         sudo apt-get update -y
         sudo apt-get install -y docker.io curl
+
         sudo systemctl enable --now docker
         sudo usermod -aG docker ubuntu || true
+
         if [ ! -f /usr/local/bin/docker-compose ]; then
-          sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) -o /usr/local/bin/docker-compose
+          sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) \
+            -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
         fi
-      "
-    # Copy compose and env template
+
+        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      EOF
+
+    # Copy docker-compose + .env template
     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
+
+    # Generate .env on server
     - |
-      ssh ubuntu@$EC2_IP "set -e
-        export APP_KEY='${APP_KEY}'
-        export DB_PASSWORD='${DB_PASSWORD}'
-        export MYSQL_ROOT_PASSWORD='${MYSQL_ROOT_PASSWORD}'
+      ssh ubuntu@$EC2_IP << EOF
+        export APP_KEY="${APP_KEY}"
+        export DB_PASSWORD="${DB_PASSWORD}"
+        export MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD}"
         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
-      "
-    # Pull images & restart
+      EOF
+
+    # ------------------------
+    # Pull images and restart
+    # ------------------------
     - |
-      ssh ubuntu@$EC2_IP "set -e
+      ssh ubuntu@$EC2_IP << 'EOF'
         cd /home/ubuntu
-        docker-compose pull || true
+        docker-compose pull
         docker-compose up -d --remove-orphans
-      "
-    # Health-check
+      EOF
+
+    # ------------------------
+    # Health check
+    # ------------------------
     - |
-      ssh ubuntu@$EC2_IP "set -e
-        echo 'Waiting for app container to be healthy...'
-        COUNT=0
-        until [ \$(docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo 'starting') = 'healthy' ]; do
-          sleep 5
-          COUNT=\$((COUNT+1))
-          if [ \$COUNT -gt 40 ]; then
-            echo 'Timeout waiting for app health'; docker ps -a; exit 1
+      ssh ubuntu@$EC2_IP << 'EOF'
+        echo "Waiting for app to become healthy..."
+        for i in {1..40}; do
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' app 2>/dev/null || echo "starting")
+          if [ "$STATUS" = "healthy" ]; then
+            echo "App is healthy"
+            break
           fi
+          sleep 5
         done
-        echo 'App is healthy'
-      "
+      EOF
+
+    # ------------------------
     # Run migrations
+    # ------------------------
     - |
-      ssh ubuntu@$EC2_IP "set -e
+      ssh ubuntu@$EC2_IP << 'EOF'
         docker exec app php artisan migrate --force
-      "
-  dependencies:
-    - terraform_apply
-    - build_php
-    - build_nginx
+      EOF
+
   only:
     - main
   tags:
     - my-vps
 
 # ----------------------------
-# Destroy infra (manual)
+# Destroy infra
 # ----------------------------
 terraform_destroy:
   stage: destroy
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""] 
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+  image: hashicorp/terraform:light
   script:
-    - set -e
     - cd infra
     - terraform init -input=false
     - terraform destroy -auto-approve
