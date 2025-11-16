@@ -26,6 +26,7 @@ variables:
 
 stages:
   - build
+  - test
   - infrastructure
   - deploy
   - destroy
