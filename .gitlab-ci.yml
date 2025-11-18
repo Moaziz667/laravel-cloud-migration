@@ -95,15 +95,19 @@ terraform_validate:
   image:
     name: hashicorp/terraform:light
     entrypoint: [""] 
+  needs:
+    - build_php
+    - build_nginx
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
     - set -e
     - cd infra
     - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
-    - terraform init -input=false -backend=false
+    - terraform init -input=false
     - terraform validate
   only:
     - main
@@ -194,7 +198,7 @@ deploy_app:
         sleep 30
         docker exec app php artisan migrate --force
       "
-  dependencies:
+  needs:
     - terraform_apply
   only:
     - main

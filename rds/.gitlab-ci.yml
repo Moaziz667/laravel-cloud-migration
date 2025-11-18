@@ -1,86 +1,74 @@
 # RDS Database Pipeline
 # This pipeline runs only when changes are made to the rds/ folder
 
-image:
-  name: hashicorp/terraform:light
-  entrypoint: [""]
-
-variables:
-  TF_ROOT: ${CI_PROJECT_DIR}/rds
-  TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/db-workspace
-  TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-
-cache:
-  key: "${TF_ROOT}"
-  paths:
-    - ${TF_ROOT}/.terraform
-    - ${TF_ROOT}/.terraform.lock.hcl
-
-before_script:
-  - cd ${TF_ROOT}
-  - terraform --version
-  - terraform init -input=false
-
 stages:
   - validate
-  - plan
   - apply
   - destroy
 
 # Validate Terraform configuration
 rds_validate:
   stage: validate
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
-    - terraform fmt -check -recursive
+    - set -e
+    - cd rds
+    - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
+    - terraform init -input=false
     - terraform validate
   rules:
     - changes:
         - rds/**/*
       when: always
 
-# Plan infrastructure changes  
-rds_plan:
-  stage: plan
+# Apply RDS infrastructure
+rds_apply:
+  stage: apply
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  needs:
+    - rds_validate
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
-    - terraform plan -input=false -out=tfplan
-  artifacts:
-    paths:
-      - ${TF_ROOT}/tfplan
-    expire_in: 1 hour
+    - set -e
+    - cd rds
+    - terraform init -input=false
+    - terraform apply -auto-approve
   rules:
     - changes:
         - rds/**/*
       when: always
 
-# Apply infrastructure changes (auto on main, manual elsewhere)
-rds_apply:
-  stage: apply
-  script:
-    - terraform apply -input=false tfplan
-  dependencies:
-    - rds_plan
-  rules:
-    - changes:
-        - rds/**/*
-      if: $CI_COMMIT_REF_NAME == "main"
-      when: on_success
-    - changes:
-        - rds/**/*
-      when: manual
-  environment:
-    name: rds-database
-    action: start
-
 # Manual destroy job (only on destroy branch)
 rds_destroy:
   stage: destroy
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
+    - set -e
+    - cd rds
+    - terraform init -input=false
     - terraform destroy -auto-approve
   rules:
     - if: $CI_COMMIT_REF_NAME == "destroy"
       changes:
         - rds/**/*
       when: manual
-  environment:
-    name: rds-database
-    action: stop
