@@ -30,33 +30,49 @@ locals {
   db_username = try(data.terraform_remote_state.rds.outputs.db_username, "admin")
   db_password = try(data.terraform_remote_state.rds.outputs.db_password, "defaultpass")
   db_security_group_id = try(data.terraform_remote_state.rds.outputs.db_security_group_id, "")
+  
+  # Use RDS VPC instead of creating our own
+  vpc_id = try(data.terraform_remote_state.rds.outputs.rds_vpc_id, "")
+  vpc_cidr_block = try(data.terraform_remote_state.rds.outputs.rds_vpc_cidr_block, "10.1.0.0/16")
 }
 
-# Create the main VPC with DNS support and hostnames enabled
-resource "aws_vpc" "main_vpc" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
+# Use the existing RDS VPC (don't create a new one)
+# Create subnets in the existing RDS VPC for EC2
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = local.vpc_id
+  cidr_block              = var.public_subnet_cidr
+  map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
 
   tags = {
-    Name = "main-vpc"
+    Name = "public-subnet-ec2"
   }
 }
 
-# Create an Internet Gateway attached to the VPC
-resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.main_vpc.id
+resource "aws_subnet" "private_subnet" {
+  vpc_id            = local.vpc_id
+  cidr_block        = var.private_subnet_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
-    Name = "main-igw"
+    Name = "private-subnet-ec2"
   }
 }
+
+# Get available AZs
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# Use the existing Internet Gateway from RDS VPC
+# No need to create a new IGW, use the one from RDS
 
 # Create a public subnet with automatic public IP assignment
 resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.main_vpc.id
+  vpc_id                  = local.vpc_id
   cidr_block              = var.public_subnet_cidr
   map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
 
   tags = {
     Name = "public-subnet"
@@ -65,39 +81,28 @@ resource "aws_subnet" "public_subnet" {
 
 # Create a private subnet in the VPC
 resource "aws_subnet" "private_subnet" {
-  vpc_id     = aws_vpc.main_vpc.id
-  cidr_block = var.private_subnet_cidr
-  availability_zone = "eu-north-1b"
-
+  vpc_id            = local.vpc_id
+  cidr_block        = var.private_subnet_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
 
   tags = {
     Name = "private-subnet"
   }
 }
 
-# Create a second private subnet in a different availability zone for redundancy
-resource "aws_subnet" "private_subnet_2" {
-  vpc_id            = aws_vpc.main_vpc.id
-  cidr_block        = "10.0.102.0/24"        # Example CIDR, adjust as needed
-  availability_zone = "eu-north-1c"          # Different AZ for high availability
-
-  tags = {
-    Name = "private-subnet-2"
-  }
-}
-
 # Create a route table for the public subnet
 resource "aws_route_table" "public_rt" {
-  vpc_id = aws_vpc.main_vpc.id
+  vpc_id = local.vpc_id
 
   route {
-    cidr_block = "0.0.0.0/0"                # Route all traffic to the internet gateway
-    gateway_id = aws_internet_gateway.gw.id
+    cidr_block = "0.0.0.0/0"
+    gateway_id = try(data.terraform_remote_state.rds.outputs.rds_igw_id, "")
   }
 
   tags = {
     Name = "public-route-table"
   }
+}
 }
 
 # Associate the public subnet with the public route table
@@ -110,7 +115,7 @@ resource "aws_route_table_association" "public_association" {
 resource "aws_security_group" "ec2_sg" {
   name        = "ec2-security-group"
   description = "Allow SSH and HTTP(s) traffic"
-  vpc_id      = aws_vpc.main_vpc.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description = "SSH"
@@ -157,7 +162,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = [local.vpc_cidr_block]
   }
 
   tags = {

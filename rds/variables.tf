@@ -4,22 +4,10 @@ variable "aws_region" {
   default     = "eu-north-1"
 }
 
-variable "vpc_cidr" {
-  description = "CIDR block for RDS VPC"
+variable "infra_vpc_cidr" {
+  description = "CIDR block for infrastructure VPC (where EC2 lives)"
   type        = string
-  default     = "10.1.0.0/16"
-}
-
-variable "rds_subnet_1_cidr" {
-  description = "CIDR block for RDS subnet 1"
-  type        = string
-  default     = "10.1.1.0/24"
-}
-
-variable "rds_subnet_2_cidr" {
-  description = "CIDR block for RDS subnet 2"
-  type        = string
-  default     = "10.1.2.0/24"
+  default     = "10.0.0.0/16"
 }
 
 variable "project_name" {

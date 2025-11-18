@@ -61,3 +61,8 @@ output "rds_vpc_cidr_block" {
   description = "RDS VPC CIDR block"
   value       = aws_vpc.rds_vpc.cidr_block
 }
+
+output "rds_igw_id" {
+  description = "RDS Internet Gateway ID"
+  value       = aws_internet_gateway.rds_igw.id
+}
