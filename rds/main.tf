@@ -28,22 +28,64 @@ resource "random_password" "db_password" {
   special = true
 }
 
-# Data sources for VPC and subnets
-data "aws_vpc" "default" {
-  default = true
+# Create VPC for RDS
+resource "aws_vpc" "rds_vpc" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "${var.project_name}-rds-vpc"
+    Environment = var.environment
+    Project     = var.project_name
+  }
 }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+# Create Internet Gateway
+resource "aws_internet_gateway" "rds_igw" {
+  vpc_id = aws_vpc.rds_vpc.id
+
+  tags = {
+    Name        = "${var.project_name}-rds-igw"
+    Environment = var.environment
+    Project     = var.project_name
   }
+}
+
+# Create public subnets for RDS (Multi-AZ)
+resource "aws_subnet" "rds_subnet_1" {
+  vpc_id            = aws_vpc.rds_vpc.id
+  cidr_block        = var.rds_subnet_1_cidr
+  availability_zone = data.aws_availability_zones.available.names[0]
+
+  tags = {
+    Name        = "${var.project_name}-rds-subnet-1"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+resource "aws_subnet" "rds_subnet_2" {
+  vpc_id            = aws_vpc.rds_vpc.id
+  cidr_block        = var.rds_subnet_2_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name        = "${var.project_name}-rds-subnet-2"
+    Environment = var.environment
+    Project     = var.project_name
+  }
+}
+
+# Get available AZs
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
 # RDS Subnet Group
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = data.aws_subnets.default.ids
+  subnet_ids = [aws_subnet.rds_subnet_1.id, aws_subnet.rds_subnet_2.id]
 
   tags = {
     Name        = "${var.project_name}-db-subnet-group"
@@ -56,13 +98,13 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_security_group" "rds" {
   name        = "${var.project_name}-rds-sg"
   description = "Security group for RDS database"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.rds_vpc.id
 
   ingress {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.default.cidr_block]
+    cidr_blocks = [aws_vpc.rds_vpc.cidr_block]
     description = "MySQL/Aurora access from VPC"
   }
 

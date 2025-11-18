@@ -82,6 +82,14 @@ rds_deploy:
   trigger:
     include:
       - local: rds/.gitlab-ci.yml
+    forward:
+      yaml_variables: true
+      pipeline_variables: true
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   rules:
     - changes:
         - rds/**/*
@@ -198,7 +206,7 @@ deploy_app:
         sleep 30
         docker exec app php artisan migrate --force
       "
-  needs:
+  dependencies:
     - terraform_apply
   only:
     - main

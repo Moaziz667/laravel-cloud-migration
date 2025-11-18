@@ -22,11 +22,13 @@ rds_validate:
     - cd rds
     - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
     - terraform init -input=false
-    - terraform validate
+    - terraform validate -compact-warnings
   rules:
     - changes:
         - rds/**/*
       when: always
+  tags:
+    - my-vps
 
 # Apply RDS infrastructure
 rds_apply:
@@ -45,11 +47,13 @@ rds_apply:
     - set -e
     - cd rds
     - terraform init -input=false
-    - terraform apply -auto-approve
+    - terraform apply -auto-approve -compact-warnings
   rules:
     - changes:
         - rds/**/*
       when: always
+  tags:
+    - my-vps
 
 # Manual destroy job (only on destroy branch)
 rds_destroy:
@@ -66,9 +70,11 @@ rds_destroy:
     - set -e
     - cd rds
     - terraform init -input=false
-    - terraform destroy -auto-approve
+    - terraform destroy -auto-approve -compact-warnings
   rules:
     - if: $CI_COMMIT_REF_NAME == "destroy"
       changes:
         - rds/**/*
       when: manual
+  tags:
+    - my-vps

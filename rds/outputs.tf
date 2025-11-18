@@ -50,3 +50,14 @@ output "db_connection_string" {
   value       = "mysql://${aws_db_instance.main.username}:${random_password.db_password.result}@${aws_db_instance.main.endpoint}:${aws_db_instance.main.port}/${aws_db_instance.main.db_name}"
   sensitive   = true
 }
+
+# VPC outputs for infra module
+output "rds_vpc_id" {
+  description = "RDS VPC ID"
+  value       = aws_vpc.rds_vpc.id
+}
+
+output "rds_vpc_cidr_block" {
+  description = "RDS VPC CIDR block"
+  value       = aws_vpc.rds_vpc.cidr_block
+}
