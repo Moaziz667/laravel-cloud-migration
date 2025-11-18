@@ -19,6 +19,7 @@ rds_validate:
     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
     - set -e
+    - cd rds
     - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
     - terraform init -input=false
     - terraform validate -compact-warnings
@@ -44,6 +45,7 @@ rds_apply:
     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
     - set -e
+    - cd rds
     - terraform init -input=false
     - terraform apply -auto-approve -compact-warnings
   rules:
@@ -66,6 +68,7 @@ rds_destroy:
     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
   script:
     - set -e
+    - cd rds
     - terraform init -input=false
     - terraform destroy -auto-approve -compact-warnings
   rules:
