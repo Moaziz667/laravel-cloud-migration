@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 # Update system
 apt-get update -y
