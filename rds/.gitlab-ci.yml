@@ -1,0 +1,86 @@
+# RDS Database Pipeline
+# This pipeline runs only when changes are made to the rds/ folder
+
+image:
+  name: hashicorp/terraform:light
+  entrypoint: [""]
+
+variables:
+  TF_ROOT: ${CI_PROJECT_DIR}/rds
+  TF_ADDRESS: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/terraform/state/db-workspace
+  TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+
+cache:
+  key: "${TF_ROOT}"
+  paths:
+    - ${TF_ROOT}/.terraform
+    - ${TF_ROOT}/.terraform.lock.hcl
+
+before_script:
+  - cd ${TF_ROOT}
+  - terraform --version
+  - terraform init -input=false
+
+stages:
+  - validate
+  - plan
+  - apply
+  - destroy
+
+# Validate Terraform configuration
+rds_validate:
+  stage: validate
+  script:
+    - terraform fmt -check -recursive
+    - terraform validate
+  rules:
+    - changes:
+        - rds/**/*
+      when: always
+
+# Plan infrastructure changes  
+rds_plan:
+  stage: plan
+  script:
+    - terraform plan -input=false -out=tfplan
+  artifacts:
+    paths:
+      - ${TF_ROOT}/tfplan
+    expire_in: 1 hour
+  rules:
+    - changes:
+        - rds/**/*
+      when: always
+
+# Apply infrastructure changes (auto on main, manual elsewhere)
+rds_apply:
+  stage: apply
+  script:
+    - terraform apply -input=false tfplan
+  dependencies:
+    - rds_plan
+  rules:
+    - changes:
+        - rds/**/*
+      if: $CI_COMMIT_REF_NAME == "main"
+      when: on_success
+    - changes:
+        - rds/**/*
+      when: manual
+  environment:
+    name: rds-database
+    action: start
+
+# Manual destroy job (only on destroy branch)
+rds_destroy:
+  stage: destroy
+  script:
+    - terraform destroy -auto-approve
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "destroy"
+      changes:
+        - rds/**/*
+      when: manual
+  environment:
+    name: rds-database
+    action: stop

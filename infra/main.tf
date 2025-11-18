@@ -9,6 +9,29 @@ terraform {
     } 
   } 
 }
+
+# Data source to read RDS outputs from remote state
+data "terraform_remote_state" "rds" {
+  backend = "remote"
+  
+  config = {
+    organization = "Asm_aziz_stage"
+    workspaces = {
+      name = "db-workspace"
+    }
+  }
+}
+
+# Local values for database configuration
+locals {
+  db_endpoint = try(data.terraform_remote_state.rds.outputs.db_endpoint, "localhost")
+  db_port     = try(data.terraform_remote_state.rds.outputs.db_port, "3306")
+  db_name     = try(data.terraform_remote_state.rds.outputs.db_name, "laravel_db")
+  db_username = try(data.terraform_remote_state.rds.outputs.db_username, "admin")
+  db_password = try(data.terraform_remote_state.rds.outputs.db_password, "defaultpass")
+  db_security_group_id = try(data.terraform_remote_state.rds.outputs.db_security_group_id, "")
+}
+
 # Create the main VPC with DNS support and hostnames enabled
 resource "aws_vpc" "main_vpc" {
   cidr_block           = var.vpc_cidr
@@ -128,6 +151,15 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Specific rule for MySQL/RDS connection
+  egress {
+    description = "MySQL to RDS"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   tags = {
     Name = "ec2-sg"
   }
@@ -142,8 +174,13 @@ resource "aws_instance" "laravel_app" {
   vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
   associate_public_ip_address = true
 
- 
-
+  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+    db_host     = local.db_endpoint
+    db_port     = local.db_port
+    db_name     = local.db_name
+    db_username = local.db_username
+    db_password = local.db_password
+  }))
 
   tags = {
     Name = "laravel-app-instance"
