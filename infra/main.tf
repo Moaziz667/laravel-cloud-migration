@@ -103,7 +103,7 @@ resource "aws_route_table" "public_rt" {
     Name = "public-route-table"
   }
 }
-}
+
 
 # Associate the public subnet with the public route table
 resource "aws_route_table_association" "public_association" {
