@@ -4,10 +4,22 @@ variable "aws_region" {
   default     = "eu-north-1"
 }
 
-variable "infra_vpc_cidr" {
-  description = "CIDR block for infrastructure VPC (where EC2 lives)"
+variable "vpc_cidr" {
+  description = "CIDR block for RDS VPC"
   type        = string
   default     = "10.0.0.0/16"
+}
+
+variable "rds_subnet_1_cidr" {
+  description = "CIDR block for RDS subnet 1"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "rds_subnet_2_cidr" {
+  description = "CIDR block for RDS subnet 2"
+  type        = string
+  default     = "10.0.2.0/24"
 }
 
 variable "project_name" {
@@ -97,11 +109,11 @@ variable "maintenance_window" {
 variable "skip_final_snapshot" {
   description = "Skip final snapshot when destroying"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "deletion_protection" {
   description = "Enable deletion protection"
   type        = bool
-  default     = true
+  default     = false
 }

@@ -6,7 +6,7 @@ stages:
   - apply
   - destroy
 
-# Validate Terraform configurationsس
+# Validate Terraform configurations
 rds_validate:
   stage: validate
   image:
@@ -30,7 +30,7 @@ rds_validate:
   tags:
     - my-vps
 
-# Apply RDS infrastructuress
+# Apply RDS infrastructure
 rds_apply:
   stage: apply
   image:

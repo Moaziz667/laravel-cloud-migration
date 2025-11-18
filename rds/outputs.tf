@@ -66,3 +66,14 @@ output "rds_igw_id" {
   description = "RDS Internet Gateway ID"
   value       = aws_internet_gateway.rds_igw.id
 }
+
+# Additional outputs for infra module
+output "rds_subnet_1_id" {
+  description = "RDS subnet 1 ID"
+  value       = aws_subnet.rds_subnet_1.id
+}
+
+output "rds_subnet_2_id" {
+  description = "RDS subnet 2 ID"
+  value       = aws_subnet.rds_subnet_2.id
+}

@@ -55,8 +55,11 @@ EOF
 chown ubuntu:ubuntu /home/ubuntu/.env
 chmod 600 /home/ubuntu/.env
 
+# Wait for RDS to be available before testing connection
+sleep 60
+
 # Test database connection
-mysql -h ${db_host} -P ${db_port} -u ${db_username} -p${db_password} -e "SHOW DATABASES;" || echo "Database connection test failed"
+mysql -h ${db_host} -P ${db_port} -u ${db_username} -p${db_password} -e "SHOW DATABASES;" && echo "Database connection successful" || echo "Database connection test failed"
 
 # Create a simple script to check database connectivity
 cat > /home/ubuntu/check_db.sh << 'EOF'
@@ -95,3 +98,7 @@ echo "EC2 instance configuration completed at $(date)" >> /var/log/user-data.log
 echo "Database Host: ${db_host}" >> /var/log/user-data.log
 echo "Database Port: ${db_port}" >> /var/log/user-data.log
 echo "Database Name: ${db_name}" >> /var/log/user-data.log
+
+# Create a status file to indicate setup is complete
+touch /home/ubuntu/setup-complete
+chown ubuntu:ubuntu /home/ubuntu/setup-complete

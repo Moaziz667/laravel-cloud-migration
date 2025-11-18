@@ -28,6 +28,11 @@ resource "random_password" "db_password" {
   special = true
 }
 
+# Get available AZs
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # Create VPC for RDS
 resource "aws_vpc" "rds_vpc" {
   cidr_block           = var.vpc_cidr
@@ -52,7 +57,7 @@ resource "aws_internet_gateway" "rds_igw" {
   }
 }
 
-# Create public subnets for RDS (Multi-AZ)
+# Create private subnets for RDS (Multi-AZ)
 resource "aws_subnet" "rds_subnet_1" {
   vpc_id            = aws_vpc.rds_vpc.id
   cidr_block        = var.rds_subnet_1_cidr
@@ -75,11 +80,6 @@ resource "aws_subnet" "rds_subnet_2" {
     Environment = var.environment
     Project     = var.project_name
   }
-}
-
-# Get available AZs
-data "aws_availability_zones" "available" {
-  state = "available"
 }
 
 # RDS Subnet Group
