@@ -75,6 +75,19 @@ build_nginx:
     - my-vps
 
 # ----------------------------
+# Database (RDS) Pipeline
+# ----------------------------
+rds_deploy:
+  stage: database
+  trigger:
+    include:
+      - local: rds/.gitlab-ci.yml
+  rules:
+    - changes:
+        - rds/**/*
+      when: always
+
+# ----------------------------
 # Terraform: validate & fmt
 # ----------------------------
 terraform_validate:
@@ -185,7 +198,7 @@ deploy_app:
         sleep 30
         docker exec app php artisan migrate --force
       "
-  dependencies:
+  needs:
     - terraform_apply
   only:
     - main
@@ -217,3 +230,4 @@ terraform_destroy:
   when: manual
   tags:
     - my-vps
+
