@@ -204,11 +204,32 @@ deploy_app:
         docker-compose up -d --remove-orphans
 
         sleep 30
+        
+        # Check if assets exist before running app commands
+        docker exec app ls -la /var/www/html/public/frontend/
+        docker exec app ls -la /var/www/html/public/frontend/css/
+        docker exec app ls -la /var/www/html/public/frontend/js/
+        docker exec app ls -la /var/www/html/public/frontend/images/
+        
+        # Run Laravel commands
         docker exec app php artisan migrate --force
         docker exec app php artisan storage:link || echo 'Storage link already exists'
         docker exec app php artisan config:cache
         docker exec app php artisan route:cache
         docker exec app php artisan view:cache
+        
+        # Fix permissions for assets
+        docker exec app chown -R www-data:www-data /var/www/html/public
+        docker exec app chmod -R 755 /var/www/html/public
+        
+        # Test that Nginx can serve static files
+        docker exec nginx nginx -t
+        docker restart nginx || echo 'Nginx restart failed'
+        
+        # Wait for services to be ready
+        sleep 10
+        
+        echo 'Deployment completed successfully!'
       "
   needs:
     - terraform_apply
