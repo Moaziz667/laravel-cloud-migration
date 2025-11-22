@@ -7,10 +7,10 @@
     <title>Inventory-Management-System</title>
 
     <!-- Font Icon -->
-    <link rel="stylesheet" href="{{ asset('frontend') }}/fonts/material-icon/css/material-design-iconic-font.min.css">
+    <link rel="stylesheet" href="{{ asset('frontend/fonts/material-icon/css/material-design-iconic-font.min.css') }}">
 
     <!-- Main css -->
-    <link rel="stylesheet" href="{{ asset('frontend') }}/css/style.css">
+    <link rel="stylesheet" href="{{ asset('frontend/css/style.css') }}">
 </head>
 <body>
 
@@ -49,7 +49,7 @@
                         </form>
                     </div>
                     <div class="signup-image">
-                        <figure><img src="{{ asset('frontend') }}/images/signup-image.jpg" alt="sing up image"></figure>
+                        <figure><img src="{{ asset('frontend/images/signup-image.jpg') }}" alt="sing up image"></figure>
                         <a href="{{ route('login') }}" class="signup-image-link"><b>I am already a member</b></a>
                     </div>
                 </div>
@@ -59,7 +59,7 @@
     </div>
 
     <!-- JS -->
-    <script src="{{ asset('frontend') }}/vendor/jquery/jquery.min.js"></script>
-    <script src="{{ asset('frontend') }}/js/main.js"></script>
+    <script src="{{ asset('frontend/vendor/jquery/jquery.min.js') }}"></script>
+    <script src="{{ asset('frontend/js/main.js') }}"></script>
 </body><!-- This templates was made by Colorlib (https://colorlib.com) -->
 </html>
