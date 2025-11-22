@@ -205,10 +205,10 @@ deploy_app:
 
         sleep 30
         docker exec app php artisan migrate --force
+        docker exec app php artisan storage:link || echo 'Storage link already exists'
         docker exec app php artisan config:cache
         docker exec app php artisan route:cache
         docker exec app php artisan view:cache
-        docker exec app php artisan storage:link
       "
   needs:
     - terraform_apply

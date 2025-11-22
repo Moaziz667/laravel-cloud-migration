@@ -12,6 +12,15 @@ const mix = require('laravel-mix');
  */
 
 mix.js('resources/js/app.js', 'public/js')
-    .postCss('resources/css/app.css', 'public/css', [
-        //
-    ]);
+    .postCss('resources/css/app.css', 'public/css')
+    .options({
+        processCssUrls: false,
+        postCss: [
+            require('autoprefixer')
+        ]
+    });
+
+// Enable versioning in production for cache busting
+if (mix.inProduction()) {
+    mix.version();
+}
