@@ -52,7 +52,7 @@ build_php:
   only:
     - main
   tags:
-    - my-vps
+    - gitlab-org
 
 # ----------------------------
 # Build Nginx image (decoupled)
@@ -72,7 +72,7 @@ build_nginx:
   only:
     - main
   tags:
-    - my-vps
+    - gitlab-org
 
 # ----------------------------
 # Database (RDS) Pipeline
@@ -117,7 +117,7 @@ terraform_validate:
   only:
     - main
   tags:
-    - my-vps
+    - gitlab-org
 
 terraform_apply:
   stage: infrastructure
@@ -153,7 +153,7 @@ terraform_apply:
   only:
     - main
   tags:
-    - my-vps
+    - gitlab-org
 
 deploy_app:
   stage: deploy
@@ -229,9 +229,6 @@ deploy_app:
         docker exec app php artisan route:cache
         docker exec app php artisan view:cache
         
-        # Debug: Check if asset URLs are working
-        docker exec app php -r \"echo 'ASSET URL: ' . env('ASSET_URL') . PHP_EOL; echo 'APP URL: ' . env('APP_URL') . PHP_EOL;\""
-        
         # Fix permissions for assets
         docker exec app chown -R www-data:www-data /var/www/html/public
         docker exec app chmod -R 755 /var/www/html/public
@@ -250,7 +247,7 @@ deploy_app:
   only:
     - main
   tags:
-    - my-vps
+    - gitlab-org
 
 
 
@@ -276,5 +273,5 @@ terraform_destroy:
     - destroy
   when: manual
   tags:
-    - my-vps
+    - gitlab-org
 

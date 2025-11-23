@@ -28,7 +28,7 @@ rds_validate:
         - rds/**/*
       when: always
   tags:
-    - my-vps
+    - gitlab-org
 
 # Apply RDS infrastructure
 rds_apply:
@@ -53,7 +53,7 @@ rds_apply:
         - rds/**/*
       when: always
   tags:
-    - my-vps
+    - gitlab-org
 
 # ManuSSal destroy job (only on destroy branch)shsss
 rds_destroy:
@@ -77,4 +77,4 @@ rds_destroy:
         - rds/**/*
       when: manual
   tags:
-    - my-vps
+    - gitlab-org
