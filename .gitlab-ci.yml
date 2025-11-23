@@ -165,11 +165,11 @@ deploy_app:
     - chmod 600 ~/.ssh/id_rsa
     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - export EC2_IP=$(cat ec2_ip.txt)
-    - export DB_HOST=$(cat db_endpoint.txt)
-    - export DB_USERNAME=$(cat db_username.txt)
-    - export DB_PASSWORD=$(cat db_password.txt)
-    - export DB_DATABASE=$(cat db_name.txt)
+    - export EC2_IP="51.21.248.38"  # Hard-coded for quick testing
+    - export DB_HOST=$(echo "$DB_HOST_OVERRIDE")
+    - export DB_USERNAME=$(echo "$DB_USERNAME_OVERRIDE") 
+    - export DB_PASSWORD=$(echo "$DB_PASSWORD_OVERRIDE")
+    - export DB_DATABASE=$(echo "$DB_DATABASE_OVERRIDE")
 
     # Prepare EC2 for Docker
     - |
@@ -220,18 +220,25 @@ deploy_app:
         
         # FIX: Copy frontend assets from app container to nginx container
         echo 'Copying frontend assets from app to nginx container...'
-        docker cp app:/var/www/html/public/frontend nginx:/var/www/html/public/
-        docker cp app:/var/www/html/public/images nginx:/var/www/html/public/
-        docker cp app:/var/www/html/public/css nginx:/var/www/html/public/
-        docker cp app:/var/www/html/public/js nginx:/var/www/html/public/
+        docker cp app:/var/www/html/public/frontend nginx:/var/www/html/public/ || echo 'Frontend copy failed'
+        docker cp app:/var/www/html/public/images nginx:/var/www/html/public/ || echo 'Images copy failed'
+        docker cp app:/var/www/html/public/css nginx:/var/www/html/public/ || echo 'CSS copy failed'
+        docker cp app:/var/www/html/public/js nginx:/var/www/html/public/ || echo 'JS copy failed'
         
         # Fix permissions on nginx container
         docker exec nginx chown -R nginx:nginx /var/www/html/public || true
         docker exec nginx chmod -R 755 /var/www/html/public || true
         
         # Verify assets are now accessible in nginx
-        docker exec nginx ls -la /var/www/html/public/frontend/css/
-        echo 'Assets copied successfully!'
+        echo 'Checking if nginx can see frontend assets:'
+        docker exec nginx ls -la /var/www/html/public/frontend/css/ || echo 'No frontend/css in nginx'
+        docker exec nginx ls -la /var/www/html/public/ || echo 'No public dir in nginx'
+        
+        # Test direct nginx access to CSS
+        docker exec nginx cat /var/www/html/public/frontend/css/style.css | head -5 || echo 'Cannot read CSS from nginx'
+        docker exec nginx curl -I http://localhost/frontend/css/style.css || echo 'Nginx cannot serve CSS'
+        
+        echo 'Assets copy verification completed!'
         
         # Run Laravel commands with forced config clearing
         docker exec app php artisan config:clear
@@ -257,8 +264,54 @@ deploy_app:
         
         echo 'Deployment completed successfully!'
       "
-  needs:
-    - terraform_apply
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_MESSAGE =~ /\[deploy-only\]/'
+      when: always
+  only:
+    - main
+  tags:
+    - my-vps
+
+# Quick deploy job for testing (skips infrastructure)
+quick_deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh sshpass curl docker-compose
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - export EC2_IP="51.21.248.38"
+    - |
+      ssh ubuntu@$EC2_IP "
+        cd /home/ubuntu
+        docker-compose down
+        docker-compose pull
+        docker-compose up -d --remove-orphans
+        sleep 20
+        
+        # Copy assets from app to nginx
+        echo 'Copying frontend assets...'
+        docker cp app:/var/www/html/public/frontend nginx:/var/www/html/public/ || echo 'Frontend copy failed'
+        docker cp app:/var/www/html/public/images nginx:/var/www/html/public/ || echo 'Images copy failed'
+        docker cp app:/var/www/html/public/css nginx:/var/www/html/public/ || echo 'CSS copy failed'
+        docker cp app:/var/www/html/public/js nginx:/var/www/html/public/ || echo 'JS copy failed'
+        
+        # Fix permissions
+        docker exec nginx chown -R nginx:nginx /var/www/html/public || true
+        docker exec nginx chmod -R 755 /var/www/html/public || true
+        
+        # Verify
+        docker exec nginx ls -la /var/www/html/public/frontend/css/ || echo 'CSS not found'
+        docker exec nginx curl -I http://localhost/frontend/css/style.css || echo 'Nginx cannot serve CSS'
+        
+        echo 'Quick deploy completed!'
+      "
+  when: manual
   only:
     - main
   tags:
