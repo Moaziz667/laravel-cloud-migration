@@ -229,6 +229,9 @@ deploy_app:
         docker cp app:/var/www/html/public/css /tmp/shared_assets/ || echo 'CSS copy to host failed'
         docker cp app:/var/www/html/public/js /tmp/shared_assets/ || echo 'JS copy to host failed'
 
+        sudo docker exec nginx mkdir -p /var/www/html/public
+        sudo docker exec nginx rm -rf /var/www/html/public/frontend /var/www/html/public/images /var/www/html/public/css /var/www/html/public/js || true
+
         sudo docker cp /tmp/shared_assets/frontend nginx:/var/www/html/public/ || echo 'Frontend copy to nginx failed'
         sudo docker cp /tmp/shared_assets/images nginx:/var/www/html/public/ || echo 'Images copy to nginx failed'
         sudo docker cp /tmp/shared_assets/css nginx:/var/www/html/public/ || echo 'CSS copy to nginx failed'
@@ -313,6 +316,9 @@ quick_deploy:
         docker cp app:/var/www/html/public/images /tmp/shared_assets/ || echo 'Images copy to host failed'
         docker cp app:/var/www/html/public/css /tmp/shared_assets/ || echo 'CSS copy to host failed'
         docker cp app:/var/www/html/public/js /tmp/shared_assets/ || echo 'JS copy to host failed'
+
+        sudo docker exec nginx mkdir -p /var/www/html/public
+        sudo docker exec nginx rm -rf /var/www/html/public/frontend /var/www/html/public/images /var/www/html/public/css /var/www/html/public/js || true
 
         sudo docker cp /tmp/shared_assets/frontend nginx:/var/www/html/public/ || echo 'Frontend copy to nginx failed'
         sudo docker cp /tmp/shared_assets/images nginx:/var/www/html/public/ || echo 'Images copy to nginx failed'
