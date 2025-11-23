@@ -33,129 +33,127 @@ stages:
   - destroy
 
 # ----------------------------
-# Build PHP image (decoupled)
+# Build PHP image (decoupled) - DISABLED
 # ----------------------------
-build_php:
-  stage: build
-  image: docker:24.0
-  before_script:
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
-  script:
-    - set -e
-    # Try to pull previous image to use as cache
-    - docker pull ${PHP_IMAGE} || true
-    - docker build --cache-from ${PHP_IMAGE} -t ${PHP_IMAGE} -f php.dockerfile .
-    - docker push ${PHP_IMAGE}
-    # Tag and push latest convenience tag
-    - docker tag ${PHP_IMAGE} ${PHP_IMAGE_LATEST}
-    - docker push ${PHP_IMAGE_LATEST}
-  only:
-    - main
-  tags:
-    - my-vps
+# build_php:
+#   stage: build
+#   image: docker:24.0
+#   before_script:
+#     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
+#   script:
+#     - set -e
+#     # Try to pull previous image to use as cache
+#     - docker pull ${PHP_IMAGE} || true
+#     - docker build --cache-from ${PHP_IMAGE} -t ${PHP_IMAGE} -f php.dockerfile .
+#     - docker push ${PHP_IMAGE}
+#     # Tag and push latest convenience tag
+#     - docker tag ${PHP_IMAGE} ${PHP_IMAGE_LATEST}
+#     - docker push ${PHP_IMAGE_LATEST}
+#   only:
+#     - main
+#   tags:
+#     - my-vps
 
 # ----------------------------
-# Build Nginx image (decoupled)
+# Build Nginx image (decoupled) - DISABLED
 # ----------------------------
-build_nginx:
-  stage: build
-  image: docker:24.0
-  before_script:
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
-  script:
-    - set -e
-    - docker pull ${NGINX_IMAGE} || true
-    - docker build --cache-from ${NGINX_IMAGE} -t ${NGINX_IMAGE} -f nginx/nginx.dockerfile .
-    - docker push ${NGINX_IMAGE}
-    - docker tag ${NGINX_IMAGE} ${NGINX_IMAGE_LATEST}
-    - docker push ${NGINX_IMAGE_LATEST}
-  only:
-    - main
-  tags:
-    - my-vps
+# build_nginx:
+#   stage: build
+#   image: docker:24.0
+#   before_script:
+#     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
+#   script:
+#     - set -e
+#     - docker pull ${NGINX_IMAGE} || true
+#     - docker build --cache-from ${NGINX_IMAGE} -t ${NGINX_IMAGE} -f nginx/nginx.dockerfile .
+#     - docker push ${NGINX_IMAGE}
+#     - docker tag ${NGINX_IMAGE} ${NGINX_IMAGE_LATEST}
+#     - docker push ${NGINX_IMAGE_LATEST}
+#   only:
+#     - main
+#   tags:
+#     - my-vps
 
 # ----------------------------
-# Database (RDS) Pipeline
+# Database (RDS) Pipeline - DISABLED
 # ----------------------------
-rds_deploy:
-  stage: database
-  trigger:
-    include:
-      - local: rds/.gitlab-ci.yml
-    strategy: depend
-  rules:
-    - changes:
-        - rds/**/*
-      when: always
-    - if: '$CI_PIPELINE_SOURCE == "push"'
-      when: always
+# rds_deploy:
+#   stage: database
+#   trigger:
+#     include:
+#       - local: rds/.gitlab-ci.yml
+#     strategy: depend
+#   rules:
+#     - changes:
+#         - rds/**/*
+#       when: always
+#     - if: '$CI_PIPELINE_SOURCE == "push"'
+#       when: always
 
 # ----------------------------
-# Terraform: validate & fmt
+# Terraform: validate & fmt - DISABLED
 # ----------------------------
-terraform_validate:
-  stage: infrastructure
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""] 
-  needs:
-    - job: build_php
-    - job: build_nginx
-    - job: rds_deploy
-      optional: true
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-  script:
-    - set -e
-    - cd infra
-    - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
-    - terraform init -input=false
-    - terraform validate
-  only:
-    - main
-  tags:
-    - my-vps
+# terraform_validate:
+#   stage: infrastructure
+#   image:
+#     name: hashicorp/terraform:light
+#     entrypoint: [""]
+#   needs:
+#     - job: build_php
+#     - job: build_nginx
+#     - job: rds_deploy
+#       optional: true
+#   variables:
+#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+#     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+#   script:
+#     - set -e
+#     - cd infra
+#     - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
+#     - terraform init -input=false
+#     - terraform validate
+#   only:
+#     - main
+#   tags:
+#     - my-vps
 
-terraform_apply:
-  stage: infrastructure
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""] 
-  needs:
-    - job: terraform_validate
-    - job: rds_deploy
-      optional: true
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-  script:
-    - set -e
-    - cd infra
-    - terraform init -input=false
-    - terraform apply -auto-approve
-    - terraform output -raw ec2_public_ip > ../ec2_ip.txt
-    - terraform output -raw db_endpoint > ../db_endpoint.txt
-    - terraform output -raw db_username > ../db_username.txt  
-    - terraform output -raw db_password > ../db_password.txt
-    - terraform output -raw db_name > ../db_name.txt
-  artifacts:
-    paths:
-      - ec2_ip.txt
-      - db_endpoint.txt
-      - db_username.txt
-      - db_password.txt
-      - db_name.txt
-  only:
-    - main
-  tags:
-    - my-vps
-
-deploy_app:
+# terraform_apply:
+#   stage: infrastructure
+#   image:
+#     name: hashicorp/terraform:light
+#     entrypoint: [""]
+#   needs:
+#     - job: terraform_validate
+#     - job: rds_deploy
+#       optional: true
+#   variables:
+#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+#     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+#   script:
+#     - set -e
+#     - cd infra
+#     - terraform init -input=false
+#     - terraform apply -auto-approve
+#     - terraform output -raw ec2_public_ip > ../ec2_ip.txt
+#     - terraform output -raw db_endpoint > ../db_endpoint.txt
+#     - terraform output -raw db_username > ../db_username.txt
+#     - terraform output -raw db_password > ../db_password.txt
+#     - terraform output -raw db_name > ../db_name.txt
+#   artifacts:
+#     paths:
+#       - ec2_ip.txt
+#       - db_endpoint.txt
+#       - db_username.txt
+#       - db_password.txt
+#       - db_name.txt
+#   only:
+#     - main
+#   tags:
+#     - my-vpsdeploy_app:
   stage: deploy
   image: alpine:latest
   before_script:
@@ -272,7 +270,7 @@ deploy_app:
   tags:
     - my-vps
 
-# Quick deploy job for testing (skips infrastructure)
+# Quick deploy job for testing (skips everything else)
 quick_deploy:
   stage: deploy
   image: alpine:latest
@@ -309,8 +307,8 @@ quick_deploy:
         
         echo 'Quick deploy completed!'
       "
-  rules:
-    - when: manual
+  only:
+    - main  
   tags:
     - my-vps
 
