@@ -218,6 +218,21 @@ deploy_app:
         docker exec app ls -la /var/www/html/public/frontend/js/
         docker exec app ls -la /var/www/html/public/frontend/images/
         
+        # FIX: Copy frontend assets from app container to nginx container
+        echo 'Copying frontend assets from app to nginx container...'
+        docker cp app:/var/www/html/public/frontend nginx:/var/www/html/public/
+        docker cp app:/var/www/html/public/images nginx:/var/www/html/public/
+        docker cp app:/var/www/html/public/css nginx:/var/www/html/public/
+        docker cp app:/var/www/html/public/js nginx:/var/www/html/public/
+        
+        # Fix permissions on nginx container
+        docker exec nginx chown -R nginx:nginx /var/www/html/public || true
+        docker exec nginx chmod -R 755 /var/www/html/public || true
+        
+        # Verify assets are now accessible in nginx
+        docker exec nginx ls -la /var/www/html/public/frontend/css/
+        echo 'Assets copied successfully!'
+        
         # Run Laravel commands with forced config clearing
         docker exec app php artisan config:clear
         docker exec app php artisan cache:clear
