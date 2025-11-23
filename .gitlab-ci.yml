@@ -194,7 +194,8 @@ deploy_app:
         export DB_USERNAME='$DB_USERNAME'
         export DB_PASSWORD='$DB_PASSWORD'
         export APP_URL='http://$EC2_IP'
-        export EC2_IP='$EC2_IP'
+        export ASSET_URL='http://$EC2_IP'
+        export MIX_APP_URL='http://$EC2_IP'
 
         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
         
@@ -229,7 +230,7 @@ deploy_app:
         docker exec app php artisan view:cache
         
         # Debug: Check if asset URLs are working
-        docker exec app php artisan tinker --execute=\"echo 'ASSET URL: ' . config('app.asset_url'); echo 'APP URL: ' . config('app.url');\""
+        docker exec app php -r \"echo 'ASSET URL: ' . env('ASSET_URL') . PHP_EOL; echo 'APP URL: ' . env('APP_URL') . PHP_EOL;\""
         
         # Fix permissions for assets
         docker exec app chown -R www-data:www-data /var/www/html/public
