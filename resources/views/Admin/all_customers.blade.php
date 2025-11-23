@@ -9,6 +9,9 @@
         Customers List
     </div>
     <div class="card-body">
+        @if(session('status'))
+            <div class="alert alert-success">{{ session('status') }}</div>
+        @endif
         <div class="table-responsive">
             <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
                 <thead>
@@ -30,8 +33,12 @@
                         <td>{{ $row->address }}</td>
                         <td>{{ $row->phone }}</td>
                         <td>
-                            <a href="{{URL::to('edit_customer')}}" class="btn btn-sm btn-info">Edit</a>
-                            <!-- <a href="{{ 'add-order/'.$row->id }}" class="btn btn-sm btn-info">Order</a> -->
+                            <a href="{{ route('customers.edit', $row) }}" class="btn btn-sm btn-primary">Edit</a>
+                            <form action="{{ route('customers.destroy', $row) }}" method="POST" class="d-inline">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this customer?')">Delete</button>
+                            </form>
                         </td>
                     </tr>
                     @endforeach

@@ -1,63 +1,102 @@
 <?php
 
 namespace App\Http\Controllers;
-use Illuminate\Support\Str;
 
-use Illuminate\Http\Request;
 use App\Models\Product;
+use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
-    // public function __construct(){
-    // 	$this->middleware('auth');
-    // }
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:50', 'unique:products,product_code'],
+            'name' => ['required', 'string', 'max:255'],
+            'category' => ['required', 'string', 'max:255'],
+            'stock' => ['required', 'integer', 'min:0'],
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'sale_price' => ['required', 'numeric', 'min:0'],
+        ]);
 
-    public function store(Request $request){
-    	
-    	$data=new Product;
-        $data->product_code=$request->code;
-    	$data->name= $request->name;
-        $data->category = $request->category;
-    	$data->stock = $request->stock;
-    	$data->unit_price = $request->unit_price;
-    	// $data->total_price = $request->stock * $request->unit_price;
-        $data->sales_unit_price = $request->sale_price;
-        // $data->sales_stock_price =$request->stock * $request->sale_price;
+        Product::create([
+            'product_code' => $validated['code'],
+            'name' => $validated['name'],
+            'category' => $validated['category'],
+            'stock' => $validated['stock'],
+            'unit_price' => $validated['unit_price'],
+            'sales_unit_price' => $validated['sale_price'],
+        ]);
 
-
-        $data->save();
-        return Redirect()->route('add.product');
+        return redirect()->route('all.product')->with('status', 'Product created successfully.');
     }
 
-    public function allProduct(){
-    	$products = Product::all();
-    	return view('Admin.all_product',compact('products'));
+    public function allProduct()
+    {
+        $products = Product::orderBy('created_at', 'desc')->get();
+
+        return view('Admin.all_product', compact('products'));
     }
 
-    public function availableProducts(){
-        $products = Product::where('stock','>','0')->get();
-        return view('Admin.available_products',compact('products'));
+    public function availableProducts()
+    {
+        $products = Product::where('stock', '>', 0)->orderBy('name')->get();
+
+        return view('Admin.available_products', compact('products'));
     }
 
-    public function formData($id){
-        $product = Product::find($id);
-        
-        return view('Admin.add_order',compact('product'));
-        // return view('Admin.add_order',['product'=>$product]);
+    public function formData($id)
+    {
+        $product = Product::findOrFail($id);
+
+        return view('Admin.add_order', compact('product'));
     }
 
-    public function purchaseData($id){
-        $product = Product::find($id);
-        
-        return view('Admin.purchase_products',compact('product'));
+    public function purchaseData($id)
+    {
+        $product = Product::findOrFail($id);
+
+        return view('Admin.purchase_products', compact('product'));
     }
 
-    public function storePurchase(Request $request){
+    public function storePurchase(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => ['required', 'exists:products,id'],
+            'purchase' => ['required', 'integer', 'min:1'],
+        ]);
 
-        Product::where('name',$request->name)->update(['stock' => $request->stock + $request->purchase]);
-        
-        return Redirect()->route('all.product');
+        $product = Product::findOrFail($validated['product_id']);
+        $product->increment('stock', $validated['purchase']);
+
+        return redirect()->route('all.product')->with('status', 'Stock updated successfully.');
     }
-    
+
+    public function edit(Product $product)
+    {
+        return view('Admin.edit_product', compact('product'));
+    }
+
+    public function update(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'product_code' => ['required', 'string', 'max:50', 'unique:products,product_code,' . $product->id],
+            'name' => ['required', 'string', 'max:255'],
+            'category' => ['required', 'string', 'max:255'],
+            'stock' => ['required', 'integer', 'min:0'],
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'sales_unit_price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $product->update($validated);
+
+        return redirect()->route('all.product')->with('status', 'Product updated successfully.');
+    }
+
+    public function destroy(Product $product)
+    {
+        $product->delete();
+
+        return redirect()->route('all.product')->with('status', 'Product deleted successfully.');
+    }
 
 }

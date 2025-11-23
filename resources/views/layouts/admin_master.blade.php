@@ -1,4 +1,4 @@
-Products<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="utf-8" />
@@ -36,7 +36,7 @@ Products<!DOCTYPE html>
                         <div class="dropdown-divider"></div>
                     <form method="POST" action="{{ route('logout') }}">
                     @csrf
-                        <a class="dropdown-item" href="route('logout')" onclick="event.preventDefault(); this.closest('form').submit();">Logout</a>
+                        <a class="dropdown-item" href="{{ route('logout') }}" onclick="event.preventDefault(); this.closest('form').submit();">Logout</a>
                     </form>
 
                     </div>

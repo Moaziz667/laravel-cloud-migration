@@ -1,11 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\CustomerController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\ProductController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +28,9 @@ Route::get('/add-product', function () {
 })->middleware(['auth'])->name('add.product');
 
 Route::post('/insert-product',[ProductController::class,'store'])->middleware(['auth']);
+Route::get('/products/{product}/edit', [ProductController::class, 'edit'])->middleware(['auth'])->name('products.edit');
+Route::put('/products/{product}', [ProductController::class, 'update'])->middleware(['auth'])->name('products.update');
+Route::delete('/products/{product}', [ProductController::class, 'destroy'])->middleware(['auth'])->name('products.destroy');
 
 Route::get('/all-product',[ProductController::class,'allProduct'])->middleware(['auth'])->name('all.product');
 
@@ -77,12 +80,13 @@ Route::get('/add-customer', function () {
 })->middleware(['auth'])->name('add.customer');
 
 Route::post('/insert-customer',[CustomerController::class,'store'])->middleware(['auth']);
+Route::get('/customers/{customer}/edit', [CustomerController::class, 'edit'])->middleware(['auth'])->name('customers.edit');
+Route::put('/customers/{customer}', [CustomerController::class, 'update'])->middleware(['auth'])->name('customers.update');
+Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->middleware(['auth'])->name('customers.destroy');
 
 Route::get('/all-customers',[CustomerController::class,'customersData'])->middleware(['auth'])->name('all.customers');
 
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth'])->name('dashboard');
 
 require __DIR__.'/auth.php';
