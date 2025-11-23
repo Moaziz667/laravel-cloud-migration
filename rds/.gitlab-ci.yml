@@ -55,7 +55,7 @@ rds_apply:
   tags:
     - my-vps
 
-# ManuSSal destroy job (only on destroy branch)ssqqsSsss
+# ManuSSal destroy job (only on destroy branch)ssqqsSssssss
 rds_destroy:
   stage: destroy
   image:
