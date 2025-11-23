@@ -194,7 +194,7 @@ deploy_app:
         export DB_USERNAME='$DB_USERNAME'
         export DB_PASSWORD='$DB_PASSWORD'
         export APP_URL='http://$EC2_IP'
-        export ASSET_URL='http://$EC2_IP'
+        export EC2_IP='$EC2_IP'
 
         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
 
@@ -212,14 +212,11 @@ deploy_app:
         docker exec app ls -la /var/www/html/public/frontend/js/
         docker exec app ls -la /var/www/html/public/frontend/images/
         
-        # Run Laravel commands - PROFESSIONAL FIX
+        # Run Laravel commands
         docker exec app php artisan migrate --force
         docker exec app php artisan storage:link || echo 'Storage link already exists'
-        docker exec app php artisan config:clear
         docker exec app php artisan config:cache
-        docker exec app php artisan route:clear  
         docker exec app php artisan route:cache
-        docker exec app php artisan view:clear
         docker exec app php artisan view:cache
         
         # Fix permissions for assets
