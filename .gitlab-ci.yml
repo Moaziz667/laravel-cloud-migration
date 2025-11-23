@@ -197,6 +197,11 @@ deploy_app:
         export EC2_IP='$EC2_IP'
 
         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
+        
+        # Debug: Check what IP we're using
+        echo 'EC2_IP is:' '$EC2_IP'
+        echo 'Generated .env contents:'
+        cat /home/ubuntu/.env | grep -E 'APP_URL|ASSET_URL'
 
         cd /home/ubuntu
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
@@ -212,12 +217,19 @@ deploy_app:
         docker exec app ls -la /var/www/html/public/frontend/js/
         docker exec app ls -la /var/www/html/public/frontend/images/
         
-        # Run Laravel commands
+        # Run Laravel commands with forced config clearing
+        docker exec app php artisan config:clear
+        docker exec app php artisan cache:clear
+        docker exec app php artisan view:clear
+        docker exec app php artisan route:clear
         docker exec app php artisan migrate --force
         docker exec app php artisan storage:link || echo 'Storage link already exists'
         docker exec app php artisan config:cache
         docker exec app php artisan route:cache
         docker exec app php artisan view:cache
+        
+        # Debug: Check if asset URLs are working
+        docker exec app php artisan tinker --execute=\"echo 'ASSET URL: ' . config('app.asset_url'); echo 'APP URL: ' . config('app.url');\""
         
         # Fix permissions for assets
         docker exec app chown -R www-data:www-data /var/www/html/public
