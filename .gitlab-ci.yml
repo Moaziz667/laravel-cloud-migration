@@ -269,8 +269,6 @@ deploy_app:
       when: manual
     - if: '$CI_COMMIT_MESSAGE =~ /\[deploy-only\]/'
       when: always
-  only:
-    - main
   tags:
     - my-vps
 
@@ -311,9 +309,8 @@ quick_deploy:
         
         echo 'Quick deploy completed!'
       "
-  when: manual
-  only:
-    - main
+  rules:
+    - when: manual
   tags:
     - my-vps
 
