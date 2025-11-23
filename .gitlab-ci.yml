@@ -292,12 +292,23 @@ quick_deploy:
         docker-compose up -d --remove-orphans
         sleep 20
         
-        # Copy assets from app to nginx
-        echo 'Copying frontend assets...'
-        docker cp app:/var/www/html/public/frontend nginx:/var/www/html/public/ || echo 'Frontend copy failed'
-        docker cp app:/var/www/html/public/images nginx:/var/www/html/public/ || echo 'Images copy failed'
-        docker cp app:/var/www/html/public/css nginx:/var/www/html/public/ || echo 'CSS copy failed'
-        docker cp app:/var/www/html/public/js nginx:/var/www/html/public/ || echo 'JS copy failed'
+        # Copy assets using volume mounts instead of docker cp
+        echo 'Setting up shared volume for assets...'
+        
+        # Create shared directory
+        sudo mkdir -p /tmp/shared_assets
+        
+        # Copy assets from app container to host
+        docker cp app:/var/www/html/public/frontend /tmp/shared_assets/ || echo 'Frontend copy to host failed'
+        docker cp app:/var/www/html/public/images /tmp/shared_assets/ || echo 'Images copy to host failed'
+        docker cp app:/var/www/html/public/css /tmp/shared_assets/ || echo 'CSS copy to host failed'
+        docker cp app:/var/www/html/public/js /tmp/shared_assets/ || echo 'JS copy to host failed'
+        
+        # Copy from host to nginx container
+        docker cp /tmp/shared_assets/frontend nginx:/var/www/html/public/ || echo 'Frontend copy to nginx failed'
+        docker cp /tmp/shared_assets/images nginx:/var/www/html/public/ || echo 'Images copy to nginx failed'
+        docker cp /tmp/shared_assets/css nginx:/var/www/html/public/ || echo 'CSS copy to nginx failed'
+        docker cp /tmp/shared_assets/js nginx:/var/www/html/public/ || echo 'JS copy to nginx failed'
         
         # Fix permissions
         docker exec nginx chown -R nginx:nginx /var/www/html/public || true
