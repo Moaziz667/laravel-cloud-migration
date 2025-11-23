@@ -1,17 +1,17 @@
 image: docker:24.0
 
 services:
-  - docker:24.0-dind
+  - docker:dind
 
 # Include GitLab SAST template
 include:
   - template: Security/SAST.gitlab-ci.yml
 
 variables:
-  DOCKER_HOST: tcp://docker:2376
-  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: 1
-  DOCKER_API_VERSION: "1.41"
+  DOCKER_API_VERSION: "1.44"
 
 
   # Use commit SHA for immutable tags
@@ -38,13 +38,7 @@ stages:
 build_php:
   stage: build
   image: docker:24.0
-  services:
-    - docker:24.0-dind
-  variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - until docker info; do sleep 1; done
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
   script:
     - set -e
@@ -58,7 +52,7 @@ build_php:
   only:
     - main
   tags:
-    - gitlab-org
+    - my-vps
 
 # ----------------------------
 # Build Nginx image (decoupled)
@@ -66,13 +60,7 @@ build_php:
 build_nginx:
   stage: build
   image: docker:24.0
-  services:
-    - docker:24.0-dind
-  variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - until docker info; do sleep 1; done
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
   script:
     - set -e
@@ -84,7 +72,7 @@ build_nginx:
   only:
     - main
   tags:
-    - gitlab-org
+    - my-vps
 
 # ----------------------------
 # Database (RDS) Pipeline
@@ -129,7 +117,7 @@ terraform_validate:
   only:
     - main
   tags:
-    - gitlab-org
+    - my-vps
 
 terraform_apply:
   stage: infrastructure
@@ -165,7 +153,7 @@ terraform_apply:
   only:
     - main
   tags:
-    - gitlab-org
+    - my-vps
 
 deploy_app:
   stage: deploy
@@ -259,7 +247,7 @@ deploy_app:
   only:
     - main
   tags:
-    - gitlab-org
+    - my-vps
 
 
 
@@ -285,5 +273,5 @@ terraform_destroy:
     - destroy
   when: manual
   tags:
-    - gitlab-org
+    - my-vps
 
