@@ -6,7 +6,7 @@ stages:
   - apply
   - destroy
 
-# Validate Terraform configurationsq
+# Validate Terraform configurationsqss
 rds_validate:
   stage: validate
   image:

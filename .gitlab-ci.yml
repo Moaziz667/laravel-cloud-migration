@@ -218,18 +218,14 @@ deploy_app:
         docker exec app ls -la /var/www/html/public/frontend/js/
         docker exec app ls -la /var/www/html/public/frontend/images/
         
-        # Copy built frontend assets from app container into nginx container via host staging
-        sudo rm -rf /tmp/frontend_assets
-        sudo mkdir -p /tmp/frontend_assets
-        sudo docker cp app:/var/www/html/public/frontend/. /tmp/frontend_assets/
-        docker exec nginx mkdir -p /var/www/html/public/frontend/css
-        docker exec nginx mkdir -p /var/www/html/public/frontend/js
-        docker exec nginx mkdir -p /var/www/html/public/frontend/images
-        sudo docker cp /tmp/frontend_assets/. nginx:/var/www/html/public/frontend/
-        docker exec nginx ls -la /var/www/html/public/frontend/
-        docker exec nginx ls -la /var/www/html/public/frontend/css/
-        docker exec nginx ls -la /var/www/html/public/frontend/js/
-        docker exec nginx ls -la /var/www/html/public/frontend/images/
+        # Copy the entire public directory so nginx serves backend and frontend assets
+        sudo rm -rf /tmp/public_assets
+        sudo mkdir -p /tmp/public_assets
+        sudo docker cp app:/var/www/html/public/. /tmp/public_assets/
+        docker exec nginx mkdir -p /var/www/html/public
+        sudo docker cp /tmp/public_assets/. nginx:/var/www/html/public/
+        docker exec nginx ls -la /var/www/html/public/frontend/ || true
+        docker exec nginx ls -la /var/www/html/public/backend/ || true
         
         # Run Laravel commands with forced config clearing
         docker exec app php artisan config:clear
