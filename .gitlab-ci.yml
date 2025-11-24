@@ -77,10 +77,7 @@ deploy_staging_ansible:
     - export ANSIBLE_HOST_KEY_CHECKING=False
     - export STAGING_DEPLOY_USER=${STAGING_DEPLOY_USER:-${DEPLOY_USER:-deploy}}
     - export STAGING_EC2_IP=$(cat staging_ec2_ip.txt)
-    - cat <<EOF > ansible/inventory/staging.ini
-[staging]
-$STAGING_EC2_IP ansible_user=$STAGING_DEPLOY_USER ansible_ssh_private_key_file=~/.ssh/id_rsa_staging
-EOF
+    - printf "[staging]\n%s ansible_user=%s ansible_ssh_private_key_file=~/.ssh/id_rsa_staging\n" "$STAGING_EC2_IP" "$STAGING_DEPLOY_USER" > ansible/inventory/staging.ini
     - export STAGING_DB_HOST=${STAGING_DB_HOST:-$(cat staging_db_endpoint.txt)}
     - export STAGING_DB_PORT=${STAGING_DB_PORT:-$(cat staging_db_port.txt)}
     - export STAGING_DB_NAME=${STAGING_DB_NAME:-$(cat staging_db_name.txt)}
