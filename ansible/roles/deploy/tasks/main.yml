@@ -44,7 +44,20 @@
 
 - name: Wait for containers to be ready
   ansible.builtin.pause:
-    seconds: 30
+    seconds: 10
+
+# 🔥🔥🔥 Ajout ici : attendre que MySQL soit réellement opérationnel
+- name: Wait for MySQL to be ready
+  become: true
+  ansible.builtin.shell: |
+    docker exec app bash -c "until nc -z {{ db_host | default('mysql') }} 3306; do echo 'Waiting for MySQL...'; sleep 2; done"
+  args:
+    chdir: "{{ app_dir }}"
+  retries: 15
+  delay: 2
+  register: mysql_ready
+  until: mysql_ready.rc == 0
+# 🔥🔥🔥 Fin ajout
 
 - name: Copy assets from app to nginx container
   become: true
