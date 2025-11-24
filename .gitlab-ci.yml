@@ -42,6 +42,7 @@ staging_infra_apply:
   script:
     - set -e
     - cd infra/staging
+    - export TF_VAR_ssh_key_name="${STAGING_SSH_KEY_NAME:-${SSH_KEY_NAME:-gitlab-deploy-key}}"
     - terraform init -input=false
     - terraform apply -auto-approve
     - terraform output -raw staging_ec2_public_ip > ../../staging_ec2_ip.txt
