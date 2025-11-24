@@ -28,9 +28,73 @@ stages:
   - build
   - test
   - database
+  - staging
   - infrastructure
   - deploy
   - destroy
+staging_terraform_apply:
+  stage: staging
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  script:
+    - set -e
+    - cd infra/staging
+    - terraform init -input=false
+    - terraform apply -auto-approve
+    - terraform output -raw staging_ec2_public_ip > ../../staging_ec2_ip.txt
+    - terraform output -raw staging_db_endpoint > ../../staging_db_endpoint.txt
+    - terraform output -raw staging_db_port > ../../staging_db_port.txt
+    - terraform output -raw staging_db_name > ../../staging_db_name.txt
+    - terraform output -raw staging_db_username > ../../staging_db_username.txt
+    - terraform output -raw staging_db_password > ../../staging_db_password.txt
+  artifacts:
+    paths:
+      - staging_ec2_ip.txt
+      - staging_db_endpoint.txt
+      - staging_db_port.txt
+      - staging_db_name.txt
+      - staging_db_username.txt
+      - staging_db_password.txt
+  only:
+    - main
+  tags:
+    - my-vps
+
+deploy_staging_ansible:
+  stage: staging
+  image: python:3.11-slim
+  needs:
+    - job: staging_terraform_apply
+  before_script:
+    - set -e
+    - python -m pip install --upgrade pip
+    - pip install "ansible==8.7.0" docker
+    - ansible-galaxy collection install community.docker
+    - mkdir -p ~/.ssh
+    - echo "${STAGING_SSH_PRIVATE_KEY:-$SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_staging
+    - chmod 600 ~/.ssh/id_rsa_staging
+    - export ANSIBLE_HOST_KEY_CHECKING=False
+    - export STAGING_DEPLOY_USER=${STAGING_DEPLOY_USER:-${DEPLOY_USER:-deploy}}
+    - export STAGING_EC2_IP=$(cat staging_ec2_ip.txt)
+    - cat <<EOF > ansible/inventory/staging.ini
+[staging]
+$STAGING_EC2_IP ansible_user=$STAGING_DEPLOY_USER ansible_ssh_private_key_file=~/.ssh/id_rsa_staging
+EOF
+    - export STAGING_DB_HOST=${STAGING_DB_HOST:-$(cat staging_db_endpoint.txt)}
+    - export STAGING_DB_PORT=${STAGING_DB_PORT:-$(cat staging_db_port.txt)}
+    - export STAGING_DB_NAME=${STAGING_DB_NAME:-$(cat staging_db_name.txt)}
+    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-$(cat staging_db_username.txt)}
+    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD:-$(cat staging_db_password.txt)}
+    - export STAGING_APP_KEY=${STAGING_APP_KEY:-$APP_KEY}
+    - export STAGING_APP_URL=${STAGING_APP_URL:-${APP_URL:-http://$STAGING_EC2_IP}}
+    - export STAGING_ASSET_URL=${STAGING_ASSET_URL:-${ASSET_URL:-http://$STAGING_EC2_IP}}
+  script:
+    - ansible-playbook -i ansible/inventory/staging.ini ansible/staging.yml
+  only:
+    - main
+  tags:
+    - my-vps
 
 # ----------------------------
 # Build PHP image (decoupled)
