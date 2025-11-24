@@ -39,8 +39,7 @@
     dest: /usr/local/bin/docker-compose
     mode: '0755'
 
-- name: Ensure docker python module present
-  become: true
-  ansible.builtin.pip:
-    name: docker
+- name: Install docker python module from OS package
+  apt:
+    name: python3-docker
     state: present
