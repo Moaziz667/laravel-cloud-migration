@@ -30,7 +30,7 @@ rds_validate:
   tags:
     - my-vps
 
-# Apply RDS infrastructure
+# Apply RDS infrastructures
 rds_apply:
   stage: apply
   image:

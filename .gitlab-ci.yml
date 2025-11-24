@@ -28,12 +28,14 @@ stages:
   - build
   - test
   - database
-  - staging
-  - infrastructure
-  - deploy
+  - staging_infra
+  - staging_deploy
+  - prod_infra
+  - prod_deploy
   - destroy
-staging_terraform_apply:
-  stage: staging
+
+staging_infra_apply:
+  stage: staging_infra
   image:
     name: hashicorp/terraform:light
     entrypoint: [""]
@@ -61,11 +63,11 @@ staging_terraform_apply:
   tags:
     - my-vps
 
-deploy_staging_ansible:
-  stage: staging
+staging_app_deploy:
+  stage: staging_deploy
   image: python:3.11-slim
   needs:
-    - job: staging_terraform_apply
+    - job: staging_infra_apply
   before_script:
     - set -e
     - python -m pip install --upgrade pip
@@ -154,8 +156,8 @@ rds_deploy:
 # ----------------------------
 # Terraform: validate & fmt
 # ----------------------------
-terraform_validate:
-  stage: infrastructure
+prod_infra_validate:
+  stage: prod_infra
   image:
     name: hashicorp/terraform:light
     entrypoint: [""] 
@@ -180,13 +182,13 @@ terraform_validate:
   tags:
     - my-vps
 
-terraform_apply:
-  stage: infrastructure
+prod_infra_apply:
+  stage: prod_infra
   image:
     name: hashicorp/terraform:light
     entrypoint: [""] 
   needs:
-    - job: terraform_validate
+    - job: prod_infra_validate
     - job: rds_deploy
       optional: true
   variables:
@@ -216,8 +218,8 @@ terraform_apply:
   tags:
     - my-vps
 
-deploy_app:
-  stage: deploy
+prod_app_deploy:
+  stage: prod_deploy
   image: alpine:latest
   before_script:
     - apk add --no-cache openssh sshpass curl docker-compose
@@ -313,7 +315,7 @@ deploy_app:
         echo 'Deployment completed successfully!'
       "
   needs:
-    - terraform_apply
+    - prod_infra_apply
   only:
     - main
   tags:
@@ -324,7 +326,7 @@ deploy_app:
 # ----------------------------
 # Destroy infra (manual)
 # ----------------------------
-terraform_destroy:
+prod_infra_destroy:
   stage: destroy
   image:
     name: hashicorp/terraform:light
