@@ -46,6 +46,7 @@ deploy_staging:
   
   before_script:
     - set -e
+    - apt-get update && apt-get install -y openssh-client
     - python -m pip install --upgrade pip
     - pip install "ansible==8.7.0" docker
     - ansible-galaxy collection install community.docker
