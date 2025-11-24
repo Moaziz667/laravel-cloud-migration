@@ -26,7 +26,7 @@ variables:
 
 stages:
   - build
-  # - test
+  - test
   # - database
   - staging_deploy
   # - prod_infra
