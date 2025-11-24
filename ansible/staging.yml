@@ -3,8 +3,10 @@
   hosts: staging
   become: true
   vars:
-    deploy_user: "{{ lookup('env', 'STAGING_DEPLOY_USER') | default(lookup('env', 'DEPLOY_USER'), true) | default('deploy', true) }}"
-    app_dir: "/home/{{ deploy_user }}/laraops"
+    deploy_user: root
+    app_dir: "/root/laraops"
+    nginx_port: "{{ lookup('env', 'NGINX_PORT') | default('8743', true) }}"
+    php_fpm_port: "{{ lookup('env', 'PHP_FPM_PORT') | default('9874', true) }}"
   roles:
     - role: common
 
@@ -12,15 +14,22 @@
   hosts: staging
   become: true
   vars:
-    deploy_user: "{{ lookup('env', 'STAGING_DEPLOY_USER') | default(lookup('env', 'DEPLOY_USER'), true) | default('deploy', true) }}"
-    app_dir: "/home/{{ deploy_user }}/laraops"
+    deploy_user: root
+    app_dir: "/root/laraops"
     app_key: "{{ lookup('env', 'STAGING_APP_KEY') | default(lookup('env', 'APP_KEY'), true) }}"
-    app_url: "{{ lookup('env', 'STAGING_APP_URL') | default(lookup('env', 'APP_URL'), true) }}"
-    asset_url: "{{ lookup('env', 'STAGING_ASSET_URL') | default(lookup('env', 'ASSET_URL'), true) }}"
-    db_host: "{{ lookup('env', 'STAGING_DB_HOST') | default(lookup('env', 'DB_HOST'), true) }}"
-    db_port: "{{ lookup('env', 'STAGING_DB_PORT') | default(lookup('env', 'DB_PORT'), true) | default('3306', true) }}"
-    db_name: "{{ lookup('env', 'STAGING_DB_NAME') | default(lookup('env', 'DB_DATABASE'), true) }}"
-    db_username: "{{ lookup('env', 'STAGING_DB_USERNAME') | default(lookup('env', 'DB_USERNAME'), true) }}"
-    db_password: "{{ lookup('env', 'STAGING_DB_PASSWORD') | default(lookup('env', 'DB_PASSWORD'), true) }}"
+    app_url: "{{ lookup('env', 'STAGING_APP_URL') }}"
+    asset_url: "{{ lookup('env', 'STAGING_ASSET_URL') }}"
+    db_host: "{{ lookup('env', 'STAGING_DB_HOST') }}"
+    db_port: "{{ lookup('env', 'STAGING_DB_PORT') | default('3306', true) }}"
+    db_name: "{{ lookup('env', 'STAGING_DB_NAME') }}"
+    db_username: "{{ lookup('env', 'STAGING_DB_USERNAME') }}"
+    db_password: "{{ lookup('env', 'STAGING_DB_PASSWORD') }}"
+    nginx_port: "{{ lookup('env', 'NGINX_PORT') | default('8743', true) }}"
+    php_fpm_port: "{{ lookup('env', 'PHP_FPM_PORT') | default('9874', true) }}"
+    php_image: "{{ lookup('env', 'PHP_IMAGE') }}"
+    nginx_image: "{{ lookup('env', 'NGINX_IMAGE') }}"
+    docker_username: "{{ lookup('env', 'DOCKER_USERNAME') }}"
+    docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+    docker_registry: "{{ lookup('env', 'DOCKER_REGISTRY') | default('docker.io', true) }}"
   roles:
     - role: deploy

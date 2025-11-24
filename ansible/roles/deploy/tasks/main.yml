@@ -8,23 +8,14 @@
     group: docker
     mode: '0755'
 
-- name: Copy docker-compose file
+- name: Create docker-compose for staging with custom ports
   become: true
-  ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../docker-compose.yml"
+  ansible.builtin.template:
+    src: docker-compose.staging.yml.j2
     dest: "{{ app_dir }}/docker-compose.yml"
     owner: "{{ deploy_user }}"
     group: docker
     mode: '0644'
-
-- name: Copy env template
-  become: true
-  ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../.env.template"
-    dest: "{{ app_dir }}/.env.template"
-    owner: "{{ deploy_user }}"
-    group: docker
-    mode: '0640'
 
 - name: Render runtime env file
   become: true
@@ -35,30 +26,85 @@
     group: docker
     mode: '0640'
 
-- name: Pull containers
+- name: Log into Docker registry
+  become: true
+  community.docker.docker_login:
+    username: "{{ docker_username }}"
+    password: "{{ docker_password }}"
+    registry_url: "{{ docker_registry }}"
+
+- name: Pull and start containers
   become: true
   community.docker.docker_compose:
     project_src: "{{ app_dir }}"
     pull: true
     state: present
+    recreate: always
+    remove_orphans: true
+
+- name: Wait for containers to be ready
+  ansible.builtin.pause:
+    seconds: 30
+
+- name: Copy assets from app to nginx container
+  become: true
+  ansible.builtin.shell: |
+    rm -rf /tmp/staging_assets
+    mkdir -p /tmp/staging_assets
+    docker cp app:/var/www/html/public/. /tmp/staging_assets/
+    docker exec nginx mkdir -p /var/www/html/public
+    docker cp /tmp/staging_assets/. nginx:/var/www/html/public/
+  args:
+    chdir: "{{ app_dir }}"
+
+- name: Clear Laravel caches
+  become: true
+  ansible.builtin.shell: |
+    docker exec app php artisan config:clear
+    docker exec app php artisan cache:clear
+    docker exec app php artisan view:clear
+    docker exec app php artisan route:clear
+  args:
+    chdir: "{{ app_dir }}"
 
 - name: Run database migrations
   become: true
-  ansible.builtin.command:
-    cmd: docker compose exec app php artisan migrate --force
+  ansible.builtin.shell: docker exec app php artisan migrate --force
+  args:
     chdir: "{{ app_dir }}"
   register: migrate_result
   failed_when: migrate_result.rc not in [0]
-  changed_when: "Migrating" in migrate_result.stdout
 
-- name: Clear caches
+- name: Create storage link
   become: true
-  ansible.builtin.command:
-    cmd: docker compose exec app php artisan optimize:clear
+  ansible.builtin.shell: docker exec app php artisan storage:link
+  args:
+    chdir: "{{ app_dir }}"
+  ignore_errors: true
+
+- name: Cache Laravel configurations
+  become: true
+  ansible.builtin.shell: |
+    docker exec app php artisan config:cache
+    docker exec app php artisan route:cache
+    docker exec app php artisan view:cache
+  args:
     chdir: "{{ app_dir }}"
 
-- name: Restart services
+- name: Fix permissions
   become: true
-  community.docker.docker_compose:
-    project_src: "{{ app_dir }}"
-    state: restarted
+  ansible.builtin.shell: |
+    docker exec app chown -R www-data:www-data /var/www/html/public
+    docker exec app chmod -R 755 /var/www/html/public
+  args:
+    chdir: "{{ app_dir }}"
+
+- name: Restart nginx
+  become: true
+  ansible.builtin.shell: docker restart nginx
+  args:
+    chdir: "{{ app_dir }}"
+
+- name: Display deployment info
+  ansible.builtin.debug:
+    msg: "Staging deployment completed! Access your app at: {{ app_url }}"

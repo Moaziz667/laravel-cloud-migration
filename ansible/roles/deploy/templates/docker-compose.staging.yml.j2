@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: {{ nginx_image }}
+    container_name: nginx
+    ports:
+      - "{{ nginx_port }}:80"
+    volumes:
+      - app-data:/var/www/html
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - laraops-network
+
+  app:
+    image: {{ php_image }}
+    container_name: app
+    volumes:
+      - app-data:/var/www/html
+    env_file:
+      - .env
+    restart: unless-stopped
+    expose:
+      - "{{ php_fpm_port }}"
+    networks:
+      - laraops-network
+
+volumes:
+  app-data:
+    driver: local
+
+networks:
+  laraops-network:
+    driver: bridge

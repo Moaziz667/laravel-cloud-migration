@@ -28,69 +28,46 @@ stages:
   - build
   - test
   - database
-  - staging_infra
   - staging_deploy
   - prod_infra
   - prod_deploy
   - destroy
 
-staging_infra_apply:
-  stage: staging_infra
-  image:
-    name: hashicorp/terraform:light
-    entrypoint: [""]
-  script:
-    - set -e
-    - cd infra/staging
-    - export TF_VAR_ssh_key_name="${STAGING_SSH_KEY_NAME:-${SSH_KEY_NAME:-gitlab-deploy-key}}"
-    - terraform init -input=false
-    - terraform apply -auto-approve
-    - terraform output -raw staging_ec2_public_ip > ../../staging_ec2_ip.txt
-    - terraform output -raw staging_db_endpoint > ../../staging_db_endpoint.txt
-    - terraform output -raw staging_db_port > ../../staging_db_port.txt
-    - terraform output -raw staging_db_name > ../../staging_db_name.txt
-    - terraform output -raw staging_db_username > ../../staging_db_username.txt
-    - terraform output -raw staging_db_password > ../../staging_db_password.txt
-  artifacts:
-    paths:
-      - staging_ec2_ip.txt
-      - staging_db_endpoint.txt
-      - staging_db_port.txt
-      - staging_db_name.txt
-      - staging_db_username.txt
-      - staging_db_password.txt
-  only:
-    - main
-  tags:
-    - my-vps
-
-staging_app_deploy:
+deploy_staging:
   stage: staging_deploy
   image: python:3.11-slim
-  needs:
-    - job: staging_infra_apply
+  
+  variables:
+    SSH_HOST: "185.44.67.203"  # VPS IP address
+    SSH_USER: "root"           # SSH user
+    SSH_PORT: "51821"          # Custom SSH port
+    NGINX_PORT: "8743"         # Non-standard Nginx port
+    PHP_FPM_PORT: "9874"       # Non-standard PHP-FPM port
+  
   before_script:
     - set -e
     - python -m pip install --upgrade pip
     - pip install "ansible==8.7.0" docker
     - ansible-galaxy collection install community.docker
     - mkdir -p ~/.ssh
-    - echo "${STAGING_SSH_PRIVATE_KEY:-$SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_staging
-    - chmod 600 ~/.ssh/id_rsa_staging
+    - set +x
+    - echo "$SSH_VPS" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - set -x
     - export ANSIBLE_HOST_KEY_CHECKING=False
-    - export STAGING_DEPLOY_USER=${STAGING_DEPLOY_USER:-${DEPLOY_USER:-deploy}}
-    - export STAGING_EC2_IP=$(cat staging_ec2_ip.txt)
-    - printf "[staging]\n%s ansible_user=%s ansible_ssh_private_key_file=~/.ssh/id_rsa_staging\n" "$STAGING_EC2_IP" "$STAGING_DEPLOY_USER" > ansible/inventory/staging.ini
-    - export STAGING_DB_HOST=${STAGING_DB_HOST:-$(cat staging_db_endpoint.txt)}
-    - export STAGING_DB_PORT=${STAGING_DB_PORT:-$(cat staging_db_port.txt)}
-    - export STAGING_DB_NAME=${STAGING_DB_NAME:-$(cat staging_db_name.txt)}
-    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-$(cat staging_db_username.txt)}
-    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD:-$(cat staging_db_password.txt)}
+    - printf "[staging]\n%s ansible_user=%s ansible_port=%s ansible_ssh_private_key_file=~/.ssh/id_rsa\n" "$SSH_HOST" "$SSH_USER" "$SSH_PORT" > ansible/inventory/staging.ini
+    - export STAGING_DB_HOST=${STAGING_DB_HOST:-localhost}
+    - export STAGING_DB_PORT=${STAGING_DB_PORT:-3306}
+    - export STAGING_DB_NAME=${STAGING_DB_NAME:-laravel_staging}
+    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-root}
+    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD}
     - export STAGING_APP_KEY=${STAGING_APP_KEY:-$APP_KEY}
-    - export STAGING_APP_URL=${STAGING_APP_URL:-${APP_URL:-http://$STAGING_EC2_IP}}
-    - export STAGING_ASSET_URL=${STAGING_ASSET_URL:-${ASSET_URL:-http://$STAGING_EC2_IP}}
+    - export STAGING_APP_URL="http://${SSH_HOST}:${NGINX_PORT}"
+    - export STAGING_ASSET_URL="http://${SSH_HOST}:${NGINX_PORT}"
+  
   script:
     - ansible-playbook -i ansible/inventory/staging.ini ansible/staging.yml
+  
   only:
     - main
   tags:
