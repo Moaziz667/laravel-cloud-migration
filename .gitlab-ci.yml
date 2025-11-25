@@ -43,6 +43,7 @@ deploy_staging:
     SSH_PORT: "51821"          # Custom SSH port
     NGINX_PORT: "8743"         # Non-standard Nginx port
     PHP_FPM_PORT: "9874"       # Non-standard PHP-FPM port
+    MYSQL_PORT: "3847"         # Non-standard MySQL port
   
   before_script:
     - set -e
@@ -59,11 +60,12 @@ deploy_staging:
     - ssh-keyscan -p ${SSH_PORT} ${SSH_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
     - export ANSIBLE_HOST_KEY_CHECKING=False
     - printf "[staging]\n%s ansible_user=%s ansible_port=%s ansible_ssh_private_key_file=~/.ssh/id_rsa\n" "$SSH_HOST" "$SSH_USER" "$SSH_PORT" > ansible/inventory/staging.ini
-    - export STAGING_DB_HOST=${STAGING_DB_HOST:-localhost}
+    - export STAGING_DB_HOST=${STAGING_DB_HOST:-mysql}
     - export STAGING_DB_PORT=${STAGING_DB_PORT:-3306}
     - export STAGING_DB_NAME=${STAGING_DB_NAME:-laravel_staging}
-    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-root}
-    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD}
+    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-laravel_user}
+    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD:-$(openssl rand -base64 32)}
+    - export STAGING_DB_ROOT_PASSWORD=${STAGING_DB_ROOT_PASSWORD:-$(openssl rand -base64 32)}
     - export STAGING_APP_KEY=${STAGING_APP_KEY:-$APP_KEY}
     - export STAGING_APP_URL="http://${SSH_HOST}:${NGINX_PORT}"
     - export STAGING_ASSET_URL="http://${SSH_HOST}:${NGINX_PORT}"

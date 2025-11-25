@@ -24,6 +24,8 @@
     db_name: "{{ lookup('env', 'STAGING_DB_NAME') }}"
     db_username: "{{ lookup('env', 'STAGING_DB_USERNAME') }}"
     db_password: "{{ lookup('env', 'STAGING_DB_PASSWORD') }}"
+    db_root_password: "{{ lookup('env', 'STAGING_DB_ROOT_PASSWORD') }}"
+    mysql_port: "{{ lookup('env', 'MYSQL_PORT') | default('3847', true) }}"
     nginx_port: "{{ lookup('env', 'NGINX_PORT') | default('8743', true) }}"
     php_fpm_port: "{{ lookup('env', 'PHP_FPM_PORT') | default('9874', true) }}"
     php_image: "{{ lookup('env', 'PHP_IMAGE') }}"

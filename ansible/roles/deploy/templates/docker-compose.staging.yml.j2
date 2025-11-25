@@ -1,6 +1,27 @@
 version: '3.8'
 
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: {{ db_root_password }}
+      MYSQL_DATABASE: {{ db_name }}
+      MYSQL_USER: {{ db_username }}
+      MYSQL_PASSWORD: {{ db_password }}
+    ports:
+      - "{{ mysql_port }}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - laraops-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p{{ db_root_password }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   nginx:
     image: {{ nginx_image }}
     container_name: nginx
@@ -24,11 +45,16 @@ services:
     restart: unless-stopped
     expose:
       - "{{ php_fpm_port }}"
+    depends_on:
+      mysql:
+        condition: service_healthy
     networks:
       - laraops-network
 
 volumes:
   app-data:
+    driver: local
+  mysql-data:
     driver: local
 
 networks:
