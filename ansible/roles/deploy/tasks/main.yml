@@ -89,14 +89,13 @@
 - name: Grant MySQL user permissions from any host
   become: true
   ansible.builtin.shell: |
-    docker exec mysql mysql -uroot -p'{{ db_root_password }}' << 'EOF'
+    docker exec mysql bash -c "mysql -uroot -p\${MYSQL_ROOT_PASSWORD} -e \"
     CREATE USER IF NOT EXISTS '{{ db_username }}'@'%' IDENTIFIED BY '{{ db_password }}';
     GRANT ALL PRIVILEGES ON {{ db_name }}.* TO '{{ db_username }}'@'%';
     FLUSH PRIVILEGES;
-    EOF
+    \""
   args:
     chdir: "{{ app_dir }}"
-    executable: /bin/bash
   register: grant_result
   failed_when: grant_result.rc != 0 and 'Operation CREATE USER failed' not in grant_result.stderr
   changed_when: grant_result.rc == 0
