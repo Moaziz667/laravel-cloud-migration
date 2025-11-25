@@ -36,8 +36,12 @@
 - name: Remove old containers and volumes
   become: true
   ansible.builtin.shell: |
-    docker stop app nginx mysql 2>/dev/null || true
-    docker rm app nginx mysql 2>/dev/null || true
+    docker ps -aq --filter "name=app" | xargs -r docker stop
+    docker ps -aq --filter "name=app" | xargs -r docker rm -f
+    docker ps -aq --filter "name=nginx" | xargs -r docker stop
+    docker ps -aq --filter "name=nginx" | xargs -r docker rm -f
+    docker ps -aq --filter "name=mysql" | xargs -r docker stop
+    docker ps -aq --filter "name=mysql" | xargs -r docker rm -f
   args:
     chdir: "{{ app_dir }}"
   ignore_errors: true

@@ -89,12 +89,16 @@ build_php:
   script:
     - set -e
     # Try to pull previous image to use as cache
-    - docker pull ${PHP_IMAGE} || true
-    - docker build --cache-from ${PHP_IMAGE} -t ${PHP_IMAGE} -f php.dockerfile .
+    - docker pull ${PHP_IMAGE_LATEST} || true
+    - docker build --cache-from ${PHP_IMAGE_LATEST} --build-arg BUILDKIT_INLINE_CACHE=1 -t ${PHP_IMAGE} -f php.dockerfile .
     - docker push ${PHP_IMAGE}
     # Tag and push latest convenience tag
     - docker tag ${PHP_IMAGE} ${PHP_IMAGE_LATEST}
     - docker push ${PHP_IMAGE_LATEST}
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-php
+    paths:
+      - .docker-cache/php
   only:
     - main
   tags:
@@ -110,11 +114,15 @@ build_nginx:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
   script:
     - set -e
-    - docker pull ${NGINX_IMAGE} || true
-    - docker build --cache-from ${NGINX_IMAGE} -t ${NGINX_IMAGE} -f nginx/nginx.dockerfile .
+    - docker pull ${NGINX_IMAGE_LATEST} || true
+    - docker build --cache-from ${NGINX_IMAGE_LATEST} --build-arg BUILDKIT_INLINE_CACHE=1 -t ${NGINX_IMAGE} -f nginx/nginx.dockerfile .
     - docker push ${NGINX_IMAGE}
     - docker tag ${NGINX_IMAGE} ${NGINX_IMAGE_LATEST}
     - docker push ${NGINX_IMAGE_LATEST}
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-nginx
+    paths:
+      - .docker-cache/nginx
   only:
     - main
   tags:
