@@ -69,18 +69,22 @@
   ansible.builtin.pause:
     seconds: 10
 
-# 🔥🔥🔥 Ajout ici : attendre que MySQL soit réellement opérationnel
 - name: Wait for MySQL to be ready
   become: true
   ansible.builtin.shell: |
-    docker exec app bash -c "until nc -z {{ db_host | default('mysql') }} 3306; do echo 'Waiting for MySQL...'; sleep 2; done"
+    for i in {1..30}; do
+      if docker exec mysql mysqladmin ping -h localhost --silent; then
+        echo "MySQL is ready"
+        exit 0
+      fi
+      echo "Waiting for MySQL... ($i/30)"
+      sleep 2
+    done
+    exit 1
   args:
     chdir: "{{ app_dir }}"
-  retries: 15
-  delay: 2
   register: mysql_ready
-  until: mysql_ready.rc == 0
-# 🔥🔥🔥 Fin ajout
+  failed_when: mysql_ready.rc != 0
 
 - name: Copy assets from app to nginx container
   become: true
