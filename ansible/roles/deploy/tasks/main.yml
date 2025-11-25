@@ -33,15 +33,11 @@
     password: "{{ docker_password }}"
     registry_url: "{{ docker_registry }}"
 
-- name: Remove old containers and volumes
+- name: Stop and remove old containers with volumes
   become: true
   ansible.builtin.shell: |
-    docker ps -aq --filter "name=app" | xargs -r docker stop
-    docker ps -aq --filter "name=app" | xargs -r docker rm -f
-    docker ps -aq --filter "name=nginx" | xargs -r docker stop
-    docker ps -aq --filter "name=nginx" | xargs -r docker rm -f
-    docker ps -aq --filter "name=mysql" | xargs -r docker stop
-    docker ps -aq --filter "name=mysql" | xargs -r docker rm -f
+    docker-compose down -v 2>/dev/null || true
+    docker volume rm laraops_mysql-data 2>/dev/null || true
   args:
     chdir: "{{ app_dir }}"
   ignore_errors: true
@@ -89,16 +85,17 @@
 - name: Grant MySQL user permissions from any host
   become: true
   ansible.builtin.shell: |
-    docker exec mysql bash -c "mysql -uroot -p\${MYSQL_ROOT_PASSWORD} -e \"
-    CREATE USER IF NOT EXISTS '{{ db_username }}'@'%' IDENTIFIED BY '{{ db_password }}';
-    GRANT ALL PRIVILEGES ON {{ db_name }}.* TO '{{ db_username }}'@'%';
+    docker exec mysql bash -c 'MYSQL_PWD=${MYSQL_ROOT_PASSWORD} mysql -uroot -e "
+    DROP USER IF EXISTS '\''{{ db_username }}'\''@'\''localhost'\'';
+    DROP USER IF EXISTS '\''{{ db_username }}'\''@'\''%'\'';
+    CREATE USER '\''{{ db_username }}'\''@'\''%'\'' IDENTIFIED BY '\''{{ db_password }}'\'';
+    GRANT ALL PRIVILEGES ON {{ db_name }}.* TO '\''{{ db_username }}'\''@'\''%'\'';
     FLUSH PRIVILEGES;
-    \""
+    "'
   args:
     chdir: "{{ app_dir }}"
   register: grant_result
-  failed_when: grant_result.rc != 0 and 'Operation CREATE USER failed' not in grant_result.stderr
-  changed_when: grant_result.rc == 0
+  failed_when: grant_result.rc != 0
 
 - name: Copy assets from app to nginx container
   become: true
