@@ -75,10 +75,12 @@ test_php:
     - php artisan config:clear
     - php artisan migrate --force
     - php artisan test
-  needs:
-    - build_php
+  needs: []
   only:
     - main
+    - merge_requests
+  tags:
+    - docker
     - merge_requests
   tags:
     - my-vps
