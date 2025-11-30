@@ -1,0 +1,96 @@
+# Rollback Tasks - Restore previous working deployment
+---
+- name: Check if backup exists
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/backups"
+  register: backup_dir
+
+- name: List available backups
+  ansible.builtin.find:
+    paths: "{{ app_dir }}/backups"
+    patterns: "backup_*"
+    file_type: directory
+  register: available_backups
+  when: backup_dir.stat.exists
+
+- name: Fail if no backups available
+  ansible.builtin.fail:
+    msg: "No backups found in {{ app_dir }}/backups. Cannot rollback!"
+  when: not backup_dir.stat.exists or available_backups.files | length == 0
+
+- name: Get latest backup
+  ansible.builtin.set_fact:
+    latest_backup: "{{ available_backups.files | sort(attribute='mtime', reverse=true) | first }}"
+  when: available_backups.files | length > 0
+
+- name: Display rollback information
+  ansible.builtin.debug:
+    msg: |
+      ╔════════════════════════════════════════════════════════════════╗
+      ║                    STARTING ROLLBACK                            ║
+      ╠════════════════════════════════════════════════════════════════╣
+      ║  Rolling back to: {{ latest_backup.path | basename }}
+      ║  Backup date: {{ latest_backup.mtime | int | 
+         strftime('%Y-%m-%d %H:%M:%S') }}
+      ╚════════════════════════════════════════════════════════════════╝
+
+- name: Stop current containers
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    state: absent
+  ignore_errors: yes
+
+- name: Restore docker-compose.yml from backup
+  ansible.builtin.copy:
+    src: "{{ latest_backup.path }}/docker-compose.yml"
+    dest: "{{ app_dir }}/docker-compose.yml"
+    remote_src: yes
+    mode: '0644'
+
+- name: Restore .env from backup
+  ansible.builtin.copy:
+    src: "{{ latest_backup.path }}/.env"
+    dest: "{{ app_dir }}/.env"
+    remote_src: yes
+    mode: '0644'
+
+- name: Pull previous Docker images
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    pull: always
+  environment:
+    DOCKER_USERNAME: "{{ lookup('env', 'DOCKER_USERNAME') }}"
+    DOCKER_PASSWORD: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+
+- name: Start containers with previous version
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    state: present
+  register: rollback_result
+
+- name: Wait for services to be ready
+  ansible.builtin.pause:
+    seconds: 20
+
+- name: Verify rollback health
+  ansible.builtin.uri:
+    url: "http://localhost:{{ nginx_port }}/api/health"
+    method: GET
+    return_content: yes
+    status_code: 200
+    timeout: 30
+  register: rollback_health
+  retries: 3
+  delay: 10
+  until: rollback_health.status == 200
+
+- name: Rollback success message
+  ansible.builtin.debug:
+    msg: |
+      ╔════════════════════════════════════════════════════════════════╗
+      ║                    ROLLBACK SUCCESSFUL                          ║
+      ╠════════════════════════════════════════════════════════════════╣
+      ║  ✅ Restored from: {{ latest_backup.path | basename }}
+      ║  ✅ Health status: {{ rollback_health.json.status }}
+      ║  ✅ App URL: http://{{ ansible_host }}:{{ nginx_port }}
+      ╚════════════════════════════════════════════════════════════════╝

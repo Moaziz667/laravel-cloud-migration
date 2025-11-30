@@ -1,0 +1,89 @@
+# Health Check Tasks - Verify deployment was successful
+---
+- name: Wait for containers to be fully ready
+  ansible.builtin.pause:
+    seconds: 15
+
+- name: Check if Nginx container is running
+  community.docker.docker_container_info:
+    name: nginx
+  register: nginx_info
+  failed_when: not nginx_info.exists or nginx_info.container.State.Status != 'running'
+
+- name: Check if App container is running
+  community.docker.docker_container_info:
+    name: app
+  register: app_info
+  failed_when: not app_info.exists or app_info.container.State.Status != 'running'
+
+- name: Check if MySQL container is running
+  community.docker.docker_container_info:
+    name: mysql
+  register: mysql_info
+  failed_when: not mysql_info.exists or mysql_info.container.State.Status != 'running'
+
+- name: Test Nginx is responding
+  ansible.builtin.uri:
+    url: "http://localhost:{{ nginx_port }}/api/ping"
+    method: GET
+    return_content: yes
+    status_code: 200
+    timeout: 30
+  register: ping_result
+  retries: 5
+  delay: 10
+  until: ping_result.status == 200
+
+- name: Test Health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ nginx_port }}/api/health"
+    method: GET
+    return_content: yes
+    status_code: 200
+    timeout: 30
+  register: health_result
+  retries: 3
+  delay: 10
+  until: health_result.status == 200
+
+- name: Parse health check response
+  ansible.builtin.set_fact:
+    health_status: "{{ health_result.json.status }}"
+    health_checks: "{{ health_result.json.checks }}"
+
+- name: Verify application is healthy
+  ansible.builtin.assert:
+    that:
+      - health_status == 'healthy'
+    fail_msg: "Application health check failed! Status: {{ health_status }}"
+    success_msg: "✅ Application is healthy!"
+
+- name: Display health check results
+  ansible.builtin.debug:
+    msg: |
+      ╔════════════════════════════════════════════════════════════════╗
+      ║                    DEPLOYMENT HEALTH CHECK                      ║
+      ╠════════════════════════════════════════════════════════════════╣
+      ║  Status: {{ health_status | upper }}
+      ║  URL: http://{{ ansible_host }}:{{ nginx_port }}
+      ║  
+      ║  Database: {{ health_checks.database.status | default('unknown') }}
+      ║  Cache: {{ health_checks.cache.status | default('unknown') }}
+      ║  Storage: {{ health_checks.storage.status | default('unknown') }}
+      ║
+      ║  Timestamp: {{ health_result.json.timestamp }}
+      ╚════════════════════════════════════════════════════════════════╝
+
+- name: Save deployment info for potential rollback
+  ansible.builtin.copy:
+    content: |
+      deployment_timestamp: {{ ansible_date_time.iso8601 }}
+      deployment_status: success
+      health_status: {{ health_status }}
+      app_url: http://{{ ansible_host }}:{{ nginx_port }}
+      containers:
+        nginx: {{ nginx_info.container.State.Status }}
+        app: {{ app_info.container.State.Status }}
+        mysql: {{ mysql_info.container.State.Status }}
+    dest: "{{ app_dir }}/last_successful_deployment.yml"
+    mode: '0644'

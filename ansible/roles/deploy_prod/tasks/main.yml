@@ -8,16 +8,10 @@
     group: docker
     mode: '0755'
 
-# ====================================
-# BACKUP BEFORE DEPLOYMENT
-# ====================================
-- name: Include backup tasks
-  include_tasks: backup.yml
-
-- name: Create docker-compose for staging with custom ports
+- name: Create docker-compose for production
   become: true
   ansible.builtin.template:
-    src: docker-compose.staging.yml.j2
+    src: docker-compose.prod.yml.j2
     dest: "{{ app_dir }}/docker-compose.yml"
     owner: "{{ deploy_user }}"
     group: docker
@@ -26,7 +20,7 @@
 - name: Render runtime env file
   become: true
   ansible.builtin.template:
-    src: env.j2
+    src: env.prod.j2
     dest: "{{ app_dir }}/.env"
     owner: "{{ deploy_user }}"
     group: docker
@@ -39,11 +33,10 @@
     password: "{{ docker_password }}"
     registry_url: "{{ docker_registry }}"
 
-- name: Stop and remove old containers with volumes
+- name: Stop and remove old containers
   become: true
   ansible.builtin.shell: |
-    docker-compose down -v 2>/dev/null || true
-    docker volume rm laraops_mysql-data 2>/dev/null || true
+    docker-compose down --remove-orphans 2>/dev/null || true
   args:
     chdir: "{{ app_dir }}"
   ignore_errors: true
@@ -69,48 +62,16 @@
 
 - name: Wait for containers to be ready
   ansible.builtin.pause:
-    seconds: 10
-
-- name: Wait for MySQL to be ready
-  become: true
-  ansible.builtin.shell: |
-    for i in {1..30}; do
-      if docker exec mysql mysqladmin ping -h localhost --silent; then
-        echo "MySQL is ready"
-        exit 0
-      fi
-      echo "Waiting for MySQL... ($i/30)"
-      sleep 2
-    done
-    exit 1
-  args:
-    chdir: "{{ app_dir }}"
-  register: mysql_ready
-  failed_when: mysql_ready.rc != 0
-
-- name: Grant MySQL user permissions from any host
-  become: true
-  ansible.builtin.shell: |
-    docker exec mysql bash -c 'MYSQL_PWD=${MYSQL_ROOT_PASSWORD} mysql -uroot -e "
-    DROP USER IF EXISTS '\''{{ db_username }}'\''@'\''localhost'\'';
-    DROP USER IF EXISTS '\''{{ db_username }}'\''@'\''%'\'';
-    CREATE USER '\''{{ db_username }}'\''@'\''%'\'' IDENTIFIED BY '\''{{ db_password }}'\'';
-    GRANT ALL PRIVILEGES ON {{ db_name }}.* TO '\''{{ db_username }}'\''@'\''%'\'';
-    FLUSH PRIVILEGES;
-    "'
-  args:
-    chdir: "{{ app_dir }}"
-  register: grant_result
-  failed_when: grant_result.rc != 0
+    seconds: 30
 
 - name: Copy assets from app to nginx container
   become: true
   ansible.builtin.shell: |
-    rm -rf /tmp/staging_assets
-    mkdir -p /tmp/staging_assets
-    docker cp app:/var/www/html/public/. /tmp/staging_assets/
+    rm -rf /tmp/prod_assets
+    mkdir -p /tmp/prod_assets
+    docker cp app:/var/www/html/public/. /tmp/prod_assets/
     docker exec nginx mkdir -p /var/www/html/public
-    docker cp /tmp/staging_assets/. nginx:/var/www/html/public/
+    docker cp /tmp/prod_assets/. nginx:/var/www/html/public/
   args:
     chdir: "{{ app_dir }}"
 
@@ -162,12 +123,6 @@
   args:
     chdir: "{{ app_dir }}"
 
-# ====================================
-# HEALTH CHECK AFTER DEPLOYMENT
-# ====================================
-- name: Include health check tasks
-  include_tasks: health_check.yml
-
 - name: Display deployment info
   ansible.builtin.debug:
-    msg: "Staging deployment completed! Access your app at: {{ app_url }}"
+    msg: "Production deployment completed! Access your app at: {{ app_url }}"

@@ -1,0 +1,82 @@
+# Backup Tasks - Save current state before deployment
+---
+- name: Create backups directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}/backups"
+    state: directory
+    mode: '0755'
+
+- name: Generate backup timestamp
+  ansible.builtin.set_fact:
+    backup_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+- name: Create backup directory for this deployment
+  ansible.builtin.file:
+    path: "{{ app_dir }}/backups/backup_{{ backup_timestamp }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if docker-compose.yml exists
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/docker-compose.yml"
+  register: compose_file
+
+- name: Backup docker-compose.yml
+  ansible.builtin.copy:
+    src: "{{ app_dir }}/docker-compose.yml"
+    dest: "{{ app_dir }}/backups/backup_{{ backup_timestamp }}/docker-compose.yml"
+    remote_src: yes
+    mode: '0644'
+  when: compose_file.stat.exists
+
+- name: Check if .env exists
+  ansible.builtin.stat:
+    path: "{{ app_dir }}/.env"
+  register: env_file
+
+- name: Backup .env file
+  ansible.builtin.copy:
+    src: "{{ app_dir }}/.env"
+    dest: "{{ app_dir }}/backups/backup_{{ backup_timestamp }}/.env"
+    remote_src: yes
+    mode: '0644'
+  when: env_file.stat.exists
+
+- name: Get current Docker images
+  ansible.builtin.shell: |
+    docker images --format "{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }}" | grep -E "(php|nginx)" || true
+  register: current_images
+  changed_when: false
+
+- name: Save current image versions
+  ansible.builtin.copy:
+    content: |
+      backup_timestamp: {{ backup_timestamp }}
+      images:
+      {{ current_images.stdout | indent(2) }}
+    dest: "{{ app_dir }}/backups/backup_{{ backup_timestamp }}/images.yml"
+    mode: '0644'
+
+- name: List existing backups
+  ansible.builtin.find:
+    paths: "{{ app_dir }}/backups"
+    patterns: "backup_*"
+    file_type: directory
+  register: existing_backups
+
+- name: Keep only last 3 backups
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ existing_backups.files | sort(attribute='mtime') | list }}"
+  when: existing_backups.files | length > 3
+  loop_control:
+    extended: yes
+  # Delete oldest backups, keep 3 most recent
+  vars:
+    backups_to_delete: "{{ existing_backups.files | sort(attribute='mtime') | list }}"
+  with_items: "{{ backups_to_delete[:-3] }}"
+
+- name: Backup complete message
+  ansible.builtin.debug:
+    msg: "✅ Backup created: backup_{{ backup_timestamp }}"

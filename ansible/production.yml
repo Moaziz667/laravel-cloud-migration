@@ -1,0 +1,34 @@
+---
+- name: Provision prerequisites on production host
+  hosts: production
+  become: true
+  vars:
+    deploy_user: ubuntu
+    app_dir: "/home/ubuntu/laraops"
+  roles:
+    - role: common
+
+- name: Deploy Laravel stack to production
+  hosts: production
+  become: true
+  vars:
+    deploy_user: ubuntu
+    app_dir: "/home/ubuntu/laraops"
+    app_key: "{{ lookup('env', 'APP_KEY') }}"
+    app_url: "{{ lookup('env', 'APP_URL') }}"
+    asset_url: "{{ lookup('env', 'ASSET_URL') }}"
+    db_host: "{{ lookup('env', 'DB_HOST') }}"
+    db_port: "{{ lookup('env', 'DB_PORT') | default('3306', true) }}"
+    db_name: "{{ lookup('env', 'DB_DATABASE') }}"
+    db_username: "{{ lookup('env', 'DB_USERNAME') }}"
+    db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+    nginx_port: "{{ lookup('env', 'NGINX_PORT') | default('80', true) }}"
+    php_fpm_port: "{{ lookup('env', 'PHP_FPM_PORT') | default('9000', true) }}"
+    php_image: "{{ lookup('env', 'PHP_IMAGE') }}"
+    nginx_image: "{{ lookup('env', 'NGINX_IMAGE') }}"
+    docker_username: "{{ lookup('env', 'DOCKER_USERNAME') }}"
+    docker_password: "{{ lookup('env', 'DOCKER_PASSWORD') }}"
+    docker_registry: "{{ lookup('env', 'DOCKER_REGISTRY') | default('docker.io', true) }}"
+    environment: production
+  roles:
+    - role: deploy_prod
