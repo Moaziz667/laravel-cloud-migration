@@ -64,18 +64,17 @@
     file_type: directory
   register: existing_backups
 
-- name: Keep only last 3 backups
+- name: Get old backups to delete (keep only 3 most recent)
+  ansible.builtin.set_fact:
+    old_backups: "{{ (existing_backups.files | sort(attribute='mtime'))[:-3] }}"
+  when: existing_backups.files | length > 3
+
+- name: Delete old backups
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: absent
-  loop: "{{ existing_backups.files | sort(attribute='mtime') | list }}"
-  when: existing_backups.files | length > 3
-  loop_control:
-    extended: yes
-  # Delete oldest backups, keep 3 most recent
-  vars:
-    backups_to_delete: "{{ existing_backups.files | sort(attribute='mtime') | list }}"
-  with_items: "{{ backups_to_delete[:-3] }}"
+  loop: "{{ old_backups | default([]) }}"
+  when: old_backups is defined and old_backups | length > 0
 
 - name: Backup complete message
   ansible.builtin.debug:
