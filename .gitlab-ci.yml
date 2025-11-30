@@ -13,7 +13,6 @@ variables:
   DOCKER_BUILDKIT: 1
   DOCKER_API_VERSION: "1.44"
 
-
   # Use commit SHA for immutable tags
   PHP_IMAGE: azizhk444/app:${CI_COMMIT_SHA}
   NGINX_IMAGE: azizhk444/nginx:${CI_COMMIT_SHA}
@@ -27,56 +26,11 @@ variables:
 stages:
   - build
   - test
-  # - database
+  - database
   - staging_deploy
-  # - prod_infra
-  # - prod_deploy
-  # - destroy
-
-deploy_staging:
-  stage: staging_deploy
-  image: python:3.11-slim
-  
-  variables:
-    SSH_HOST: "185.44.67.203"  # VPS IP address
-    SSH_USER: "root"           # SSH user
-    SSH_PORT: "51821"          # Custom SSH port
-    NGINX_PORT: "8743"         # Non-standard Nginx port
-    PHP_FPM_PORT: "9874"       # Non-standard PHP-FPM port
-    MYSQL_PORT: "3847"         # Non-standard MySQL port
-  
-  before_script:
-    - set -e
-    - apt-get update && apt-get install -y openssh-client
-    - python -m pip install --upgrade pip
-    - pip install "ansible==8.7.0" docker
-    - ansible-galaxy collection install community.docker
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - set +x
-    - echo "$SSH_VPS" | tr -d '\r' > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - set -x
-    - ssh-keyscan -p ${SSH_PORT} ${SSH_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
-    - export ANSIBLE_HOST_KEY_CHECKING=False
-    - printf "[staging]\n%s ansible_user=%s ansible_port=%s ansible_ssh_private_key_file=~/.ssh/id_rsa\n" "$SSH_HOST" "$SSH_USER" "$SSH_PORT" > ansible/inventory/staging.ini
-    - export STAGING_DB_HOST=${STAGING_DB_HOST:-mysql}
-    - export STAGING_DB_PORT=${STAGING_DB_PORT:-3306}
-    - export STAGING_DB_NAME=${STAGING_DB_NAME:-laravel_staging}
-    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-laravel_user}
-    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD:-$(openssl rand -base64 32)}
-    - export STAGING_DB_ROOT_PASSWORD=${STAGING_DB_ROOT_PASSWORD:-$(openssl rand -base64 32)}
-    - export STAGING_APP_KEY=${STAGING_APP_KEY:-$APP_KEY}
-    - export STAGING_APP_URL="http://${SSH_HOST}:${NGINX_PORT}"
-    - export STAGING_ASSET_URL="http://${SSH_HOST}:${NGINX_PORT}"
-  
-  script:
-    - ansible-playbook -i ansible/inventory/staging.ini ansible/staging.yml
-  
-  only:
-    - main
-  tags:
-    - my-vps
+  - prod_infra
+  - prod_deploy
+  - destroy
 
 # ----------------------------
 # Build PHP image (decoupled)
@@ -131,210 +85,259 @@ build_nginx:
 # ----------------------------
 # Database (RDS) Pipeline
 # ----------------------------
-# rds_deploy:
-#   stage: database
-#   trigger:
-#     include:
-#       - local: rds/.gitlab-ci.yml
-#     strategy: depend
-#   rules:
-#     - changes:
-#         - rds/**/*
-#       when: always
-#     - if: '$CI_PIPELINE_SOURCE == "push"'
-#       when: always
+rds_deploy:
+  stage: database
+  trigger:
+    include:
+      - local: rds/.gitlab-ci.yml
+    strategy: depend
+  rules:
+    - changes:
+        - rds/**/*
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: always
+
+# ----------------------------
+# Staging Deploy (VPS)
+# ----------------------------
+deploy_staging:
+  stage: staging_deploy
+  image: python:3.11-slim
+  
+  variables:
+    SSH_HOST: "185.44.67.203"  # VPS IP address
+    SSH_USER: "root"           # SSH user
+    SSH_PORT: "51821"          # Custom SSH port
+    NGINX_PORT: "8743"         # Non-standard Nginx port
+    PHP_FPM_PORT: "9874"       # Non-standard PHP-FPM port
+    MYSQL_PORT: "3847"         # Non-standard MySQL port
+  
+  before_script:
+    - set -e
+    - apt-get update && apt-get install -y openssh-client
+    - python -m pip install --upgrade pip
+    - pip install "ansible==8.7.0" docker
+    - ansible-galaxy collection install community.docker
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - set +x
+    - echo "$SSH_VPS" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - set -x
+    - ssh-keyscan -p ${SSH_PORT} ${SSH_HOST} >> ~/.ssh/known_hosts 2>/dev/null || true
+    - export ANSIBLE_HOST_KEY_CHECKING=False
+    - printf "[staging]\n%s ansible_user=%s ansible_port=%s ansible_ssh_private_key_file=~/.ssh/id_rsa\n" "$SSH_HOST" "$SSH_USER" "$SSH_PORT" > ansible/inventory/staging.ini
+    - export STAGING_DB_HOST=${STAGING_DB_HOST:-mysql}
+    - export STAGING_DB_PORT=${STAGING_DB_PORT:-3306}
+    - export STAGING_DB_NAME=${STAGING_DB_NAME:-laravel_staging}
+    - export STAGING_DB_USERNAME=${STAGING_DB_USERNAME:-laravel_user}
+    - export STAGING_DB_PASSWORD=${STAGING_DB_PASSWORD:-$(openssl rand -base64 32)}
+    - export STAGING_DB_ROOT_PASSWORD=${STAGING_DB_ROOT_PASSWORD:-$(openssl rand -base64 32)}
+    - export STAGING_APP_KEY=${STAGING_APP_KEY:-$APP_KEY}
+    - export STAGING_APP_URL="http://${SSH_HOST}:${NGINX_PORT}"
+    - export STAGING_ASSET_URL="http://${SSH_HOST}:${NGINX_PORT}"
+  
+  script:
+    - ansible-playbook -i ansible/inventory/staging.ini ansible/staging.yml
+  
+  only:
+    - main
+  tags:
+    - my-vps
 
 # ----------------------------
 # Terraform: validate & fmt
 # ----------------------------
-# prod_infra_validate:
-#   stage: prod_infra
-#   image:
-#     name: hashicorp/terraform:light
-#     entrypoint: [""] 
-#   needs:
-#     - job: build_php
-#     - job: build_nginx
-#     - job: rds_deploy
-#       optional: true
-#   variables:
-#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-#     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-#   script:
-#     - set -e
-#     - cd infra
-#     - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
-#     - terraform init -input=false
-#     - terraform validate
-#   only:
-#     - main
-#   tags:
-#     - my-vps
+prod_infra_validate:
+  stage: prod_infra
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""] 
+  needs:
+    - job: build_php
+    - job: build_nginx
+    - job: rds_deploy
+      optional: true
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+  script:
+    - set -e
+    - cd infra
+    - terraform fmt -check || (terraform fmt && echo "Reformatted Terraform files")
+    - terraform init -input=false
+    - terraform validate
+  only:
+    - main
+  tags:
+    - my-vps
 
-# prod_infra_apply:
-#   stage: prod_infra
-#   image:
-#     name: hashicorp/terraform:light
-#     entrypoint: [""] 
-#   needs:
-#     - job: prod_infra_validate
-#     - job: rds_deploy
-#       optional: true
-#   variables:
-#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-#     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-#   script:
-#     - set -e
-#     - cd infra
-#     - terraform init -input=false
-#     - terraform apply -auto-approve
-#     - terraform output -raw ec2_public_ip > ../ec2_ip.txt
-#     - terraform output -raw db_endpoint > ../db_endpoint.txt
-#     - terraform output -raw db_username > ../db_username.txt  
-#     - terraform output -raw db_password > ../db_password.txt
-#     - terraform output -raw db_name > ../db_name.txt
-#   artifacts:
-#     paths:
-#       - ec2_ip.txt
-#       - db_endpoint.txt
-#       - db_username.txt
-#       - db_password.txt
-#       - db_name.txt
-#   only:
-#     - main
-#   tags:
-#     - my-vps
+prod_infra_apply:
+  stage: prod_infra
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""] 
+  needs:
+    - job: prod_infra_validate
+    - job: rds_deploy
+      optional: true
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+  script:
+    - set -e
+    - cd infra
+    - terraform init -input=false
+    - terraform apply -auto-approve
+    - terraform output -raw ec2_public_ip > ../ec2_ip.txt
+    - terraform output -raw db_endpoint > ../db_endpoint.txt
+    - terraform output -raw db_username > ../db_username.txt  
+    - terraform output -raw db_password > ../db_password.txt
+    - terraform output -raw db_name > ../db_name.txt
+  artifacts:
+    paths:
+      - ec2_ip.txt
+      - db_endpoint.txt
+      - db_username.txt
+      - db_password.txt
+      - db_name.txt
+  only:
+    - main
+  tags:
+    - my-vps
 
-# prod_app_deploy:
-#   stage: prod_deploy
-#   image: alpine:latest
-#   before_script:
-#     - apk add --no-cache openssh sshpass curl docker-compose
-#     - mkdir -p ~/.ssh
-#     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-#     - chmod 600 ~/.ssh/id_rsa
-#     - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-#   script:
-#     - export EC2_IP=$(cat ec2_ip.txt)
-#     - export DB_HOST=$(cat db_endpoint.txt)
-#     - export DB_USERNAME=$(cat db_username.txt)
-#     - export DB_PASSWORD=$(cat db_password.txt)
-#     - export DB_DATABASE=$(cat db_name.txt)
-# 
-#     # Prepare EC2 for Docker
-#     - |
-#       ssh ubuntu@$EC2_IP "
-#         sudo apt update -y &&
-#         sudo apt install -y docker.io &&
-#         sudo systemctl start docker &&
-#         sudo usermod -aG docker ubuntu &&
-#         sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) -o /usr/local/bin/docker-compose &&
-#         sudo chmod +x /usr/local/bin/docker-compose
-#       "
-# 
-#     # Upload config files
-#     - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
-# 
-#     # Generate .env and deploy containers
-#     - |
-#       ssh ubuntu@$EC2_IP "
-#         export APP_KEY='$APP_KEY'
-#         export DB_HOST='$DB_HOST'
-#         export DB_DATABASE='$DB_DATABASE'
-#         export DB_USERNAME='$DB_USERNAME'
-#         export DB_PASSWORD='$DB_PASSWORD'
-#         export APP_URL='http://$EC2_IP'
-#         export ASSET_URL='http://$EC2_IP'
-#         export MIX_APP_URL='http://$EC2_IP'
-# 
-#         envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
-#         
-#         # Debug: Check what IP we're using
-#         echo 'EC2_IP is:' '$EC2_IP'
-#         echo 'Generated .env contents:'
-#         cat /home/ubuntu/.env | grep -E 'APP_URL|ASSET_URL'
-# 
-#         cd /home/ubuntu
-#         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
-#         docker-compose down
-#         docker-compose pull
-#         docker-compose up -d --remove-orphans
-# 
-#         sleep 30
-#         
-#         # Check if assets exist before running app commands
-#         docker exec app ls -la /var/www/html/public/frontend/
-#         docker exec app ls -la /var/www/html/public/frontend/css/
-#         docker exec app ls -la /var/www/html/public/frontend/js/
-#         docker exec app ls -la /var/www/html/public/frontend/images/
-#         
-#         # Copy the entire public directory so nginx serves backend and frontend assets
-#         sudo rm -rf /tmp/public_assets
-#         sudo mkdir -p /tmp/public_assets
-#         sudo docker cp app:/var/www/html/public/. /tmp/public_assets/
-#         docker exec nginx mkdir -p /var/www/html/public
-#         sudo docker cp /tmp/public_assets/. nginx:/var/www/html/public/
-#         docker exec nginx ls -la /var/www/html/public/frontend/ || true
-#         docker exec nginx ls -la /var/www/html/public/backend/ || true
-#         
-#         # Run Laravel commands with forced config clearing
-#         docker exec app php artisan config:clear
-#         docker exec app php artisan cache:clear
-#         docker exec app php artisan view:clear
-#         docker exec app php artisan route:clear
-#         docker exec app php artisan migrate --force
-#         docker exec app php artisan storage:link || echo 'Storage link already exists'
-#         docker exec app php artisan config:cache
-#         docker exec app php artisan route:cache
-#         docker exec app php artisan view:cache
-#         
-#         # Fix permissions for assets
-#         docker exec app chown -R www-data:www-data /var/www/html/public
-#         docker exec app chmod -R 755 /var/www/html/public
-#         
-#         # Test that Nginx can serve static files
-#         docker exec nginx nginx -t
-#         docker restart nginx || echo 'Nginx restart failed'
-#         
-#         # Wait for services to be ready
-#         sleep 10
-#         
-#         echo 'Deployment completed successfully!'
-#       "
-#   needs:
-#     - prod_infra_apply
-#   only:
-#     - main
-#   tags:
-#     - my-vps
+# ----------------------------
+# Production Deploy (EC2)
+# ----------------------------
+prod_app_deploy:
+  stage: prod_deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh sshpass curl docker-compose
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+  script:
+    - export EC2_IP=$(cat ec2_ip.txt)
+    - export DB_HOST=$(cat db_endpoint.txt)
+    - export DB_USERNAME=$(cat db_username.txt)
+    - export DB_PASSWORD=$(cat db_password.txt)
+    - export DB_DATABASE=$(cat db_name.txt)
 
+    # Prepare EC2 for Docker
+    - |
+      ssh ubuntu@$EC2_IP "
+        sudo apt update -y &&
+        sudo apt install -y docker.io &&
+        sudo systemctl start docker &&
+        sudo usermod -aG docker ubuntu &&
+        sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m) -o /usr/local/bin/docker-compose &&
+        sudo chmod +x /usr/local/bin/docker-compose
+      "
 
+    # Upload config files
+    - scp docker-compose.yml .env.template ubuntu@$EC2_IP:/home/ubuntu/
+
+    # Generate .env and deploy containers
+    - |
+      ssh ubuntu@$EC2_IP "
+        export APP_KEY='$APP_KEY'
+        export DB_HOST='$DB_HOST'
+        export DB_DATABASE='$DB_DATABASE'
+        export DB_USERNAME='$DB_USERNAME'
+        export DB_PASSWORD='$DB_PASSWORD'
+        export APP_URL='http://$EC2_IP'
+        export ASSET_URL='http://$EC2_IP'
+        export MIX_APP_URL='http://$EC2_IP'
+
+        envsubst < /home/ubuntu/.env.template > /home/ubuntu/.env
+        
+        # Debug: Check what IP we're using
+        echo 'EC2_IP is:' '$EC2_IP'
+        echo 'Generated .env contents:'
+        cat /home/ubuntu/.env | grep -E 'APP_URL|ASSET_URL'
+
+        cd /home/ubuntu
+        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin $DOCKER_REGISTRY
+        docker-compose down
+        docker-compose pull
+        docker-compose up -d --remove-orphans
+
+        sleep 30
+        
+        # Check if assets exist before running app commands
+        docker exec app ls -la /var/www/html/public/frontend/
+        docker exec app ls -la /var/www/html/public/frontend/css/
+        docker exec app ls -la /var/www/html/public/frontend/js/
+        docker exec app ls -la /var/www/html/public/frontend/images/
+        
+        # Copy the entire public directory so nginx serves backend and frontend assets
+        sudo rm -rf /tmp/public_assets
+        sudo mkdir -p /tmp/public_assets
+        sudo docker cp app:/var/www/html/public/. /tmp/public_assets/
+        docker exec nginx mkdir -p /var/www/html/public
+        sudo docker cp /tmp/public_assets/. nginx:/var/www/html/public/
+        docker exec nginx ls -la /var/www/html/public/frontend/ || true
+        docker exec nginx ls -la /var/www/html/public/backend/ || true
+        
+        # Run Laravel commands with forced config clearing
+        docker exec app php artisan config:clear
+        docker exec app php artisan cache:clear
+        docker exec app php artisan view:clear
+        docker exec app php artisan route:clear
+        docker exec app php artisan migrate --force
+        docker exec app php artisan storage:link || echo 'Storage link already exists'
+        docker exec app php artisan config:cache
+        docker exec app php artisan route:cache
+        docker exec app php artisan view:cache
+        
+        # Fix permissions for assets
+        docker exec app chown -R www-data:www-data /var/www/html/public
+        docker exec app chmod -R 755 /var/www/html/public
+        
+        # Test that Nginx can serve static files
+        docker exec nginx nginx -t
+        docker restart nginx || echo 'Nginx restart failed'
+        
+        # Wait for services to be ready
+        sleep 10
+        
+        echo 'Deployment completed successfully!'
+      "
+  needs:
+    - prod_infra_apply
+  only:
+    - main
+  tags:
+    - my-vps
 
 # ----------------------------
 # Destroy infra (manual)
 # ----------------------------
-# prod_infra_destroy:
-#   stage: destroy
-#   image:
-#     name: hashicorp/terraform:light
-#     entrypoint: [""] 
-#   variables:
-#     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-#     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-#     AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
-#     TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
-#   script:
-#     - set -e
-#     - cd infra
-#     - terraform init -input=false
-#     - terraform destroy -auto-approve
-#   only:
-#     - destroy
-#   when: manual
-#   tags:
-#     - my-vps
+prod_infra_destroy:
+  stage: destroy
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""] 
+  variables:
+    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    TF_TOKEN_app_terraform_io: $TF_TOKEN_app_terraform_io
+  script:
+    - set -e
+    - cd infra
+    - terraform init -input=false
+    - terraform destroy -auto-approve
+  only:
+    - destroy
+  when: manual
+  tags:
+    - my-vps
 
