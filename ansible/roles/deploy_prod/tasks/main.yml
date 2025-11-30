@@ -37,7 +37,11 @@
 - name: Stop and remove old containers
   become: true
   ansible.builtin.shell: |
+    cd {{ app_dir }}
     docker-compose down --remove-orphans 2>/dev/null || true
+    docker stop app nginx 2>/dev/null || true
+    docker rm -f app nginx 2>/dev/null || true
+    docker container prune -f 2>/dev/null || true
   args:
     chdir: "{{ app_dir }}"
   ignore_errors: true
