@@ -72,12 +72,6 @@ test_php:
     - main
     - merge_requests
   allow_failure: true
-  tags:
-    - docker
-    - merge_requests
-  tags:
-    - my-vps
-  allow_failure: true
 
 # ----------------------------
 # Build PHP image (decoupled)
