@@ -274,13 +274,21 @@ prod_app_deploy:
     - ssh-keyscan ${EC2_IP} >> ~/.ssh/known_hosts 2>/dev/null || true
     - export ANSIBLE_HOST_KEY_CHECKING=False
     - printf "[production]\n%s ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa\n" "$EC2_IP" > ansible/inventory/production.ini
+    # Database credentials from Terraform outputs
     - export DB_HOST=$(cat db_endpoint.txt)
     - export DB_USERNAME=$(cat db_username.txt)
     - export DB_PASSWORD=$(cat db_password.txt)
     - export DB_DATABASE=$(cat db_name.txt)
     - export DB_PORT=${DB_PORT:-3306}
+    # App URLs
     - export APP_URL="http://${EC2_IP}"
     - export ASSET_URL="http://${EC2_IP}"
+    # Docker images and registry (use latest for production)
+    - export PHP_IMAGE=${PHP_IMAGE_LATEST}
+    - export NGINX_IMAGE=${NGINX_IMAGE_LATEST}
+    - export DOCKER_USERNAME=${DOCKER_USERNAME}
+    - export DOCKER_PASSWORD=${DOCKER_PASSWORD}
+    - export DOCKER_REGISTRY=${DOCKER_REGISTRY:-docker.io}
   script:
     - ansible-playbook -i ansible/inventory/production.ini ansible/production.yml
   needs:

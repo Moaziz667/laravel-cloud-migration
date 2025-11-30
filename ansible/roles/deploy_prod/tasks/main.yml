@@ -28,10 +28,11 @@
 
 - name: Log into Docker registry
   become: true
-  community.docker.docker_login:
-    username: "{{ docker_username }}"
-    password: "{{ docker_password }}"
-    registry_url: "{{ docker_registry }}"
+  ansible.builtin.shell: |
+    echo "{{ docker_password }}" | docker login -u "{{ docker_username }}" --password-stdin {{ docker_registry }}
+  args:
+    chdir: "{{ app_dir }}"
+  no_log: true
 
 - name: Stop and remove old containers
   become: true
