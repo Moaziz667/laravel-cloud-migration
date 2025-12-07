@@ -96,8 +96,6 @@ build_php:
       - .docker-cache/php
   only:
     - main
-  tags:
-    - my-vps
 
 # ----------------------------
 # Build Nginx image (decoupled)
@@ -120,8 +118,6 @@ build_nginx:
       - .docker-cache/nginx
   only:
     - main
-  tags:
-    - my-vps
 
 # ----------------------------
 # Database (RDS) Pipeline
@@ -184,8 +180,6 @@ deploy_staging:
   
   only:
     - main
-  tags:
-    - my-vps
 
 # ----------------------------
 # Terraform: validate & fmt
@@ -213,8 +207,6 @@ prod_infra_validate:
     - terraform validate
   only:
     - main
-  tags:
-    - my-vps
 
 prod_infra_apply:
   stage: prod_infra
@@ -249,8 +241,6 @@ prod_infra_apply:
       - db_name.txt
   only:
     - main
-  tags:
-    - my-vps
 
 # ----------------------------
 # Production Deploy (EC2 via Ansible)
@@ -295,8 +285,6 @@ prod_app_deploy:
     - prod_infra_apply
   only:
     - main
-  tags:
-    - my-vps
 
 # ----------------------------
 # Destroy infra (manual)
@@ -319,6 +307,4 @@ prod_infra_destroy:
   only:
     - destroy
   when: manual
-  tags:
-    - my-vps
 

@@ -27,8 +27,6 @@ rds_validate:
     - changes:
         - rds/**/*
       when: always
-  tags:
-    - my-vps
 
 # Apply RDS infrastructuress
 rds_apply:
@@ -52,8 +50,6 @@ rds_apply:
     - changes:
         - rds/**/*
       when: always
-  tags:
-    - my-vps
 
 # Manuallsss destroy job (only on destroy branch)
 rds_destroy:
@@ -76,5 +72,3 @@ rds_destroy:
       changes:
         - rds/**/*
       when: manual
-  tags:
-    - my-vps
