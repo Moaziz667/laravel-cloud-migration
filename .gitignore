@@ -13,3 +13,10 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+
+
+# local secrets / state
+k8s/secrets.yaml
+terraform.tfstate
+*.tfstate.backup
+.env.testing
