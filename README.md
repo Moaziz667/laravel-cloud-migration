@@ -1,25 +1,32 @@
-# LaravelDevOps
+# Laravel Cloud Migration
 
-One Laravel application, deployed four different ways — to compare the trade-offs between
-traditional VPS hosting and cloud-native infrastructure, with a single GitLab pipeline driving
-both.
+Taking one Laravel application from a hand-managed VPS to infrastructure provisioned entirely in
+Terraform on AWS, and keeping both targets alive side by side so the trade-offs can be measured
+rather than guessed.
 
 The application itself is deliberately ordinary. Everything interesting is in how it gets built,
 tested, provisioned, and shipped.
 
 ---
 
-## The four deployment paths
+## Deployment targets
 
-| Path | Target | Provisioning | Release |
-|---|---|---|---|
-| **Docker Compose** | Any Linux host | Manual | `docker compose up` |
-| **VPS + Ansible** | Self-managed VPS | Manual host setup | Ansible playbook, staging inventory |
-| **AWS + Terraform** | EC2 + RDS | Terraform (two modules) | Ansible playbook, production inventory |
-| **Kubernetes** | Any cluster | Manifests | `kubectl apply -f k8s/` |
+Two are automated and run on every push to `main`:
 
-Both the VPS and AWS paths are wired into the same pipeline and run on every push to `main` —
-staging to the VPS, production to AWS.
+| Target | Provisioning | Release |
+|---|---|---|
+| **Staging — self-managed VPS** | Manual host setup | Ansible playbook, staging inventory |
+| **Production — AWS EC2 + RDS** | Terraform, three roots | Ansible playbook, production inventory |
+
+Two more exist for local work and experimentation, and are **not** part of the pipeline:
+
+| Target | Status |
+|---|---|
+| **Docker Compose** | Local development stack |
+| **Kubernetes** (`k8s/`) | Manifests written and applied by hand; never wired into CI |
+
+Being explicit about that split is the point — the Kubernetes manifests are a sketch of where this
+would go next, not a third production path.
 
 ---
 
@@ -63,12 +70,17 @@ Terraform is split into two modules so that database lifecycle is independent of
 lifecycle — you can rebuild the application tier without putting the database at risk.
 
 ```
-rds/        VPC (10.0.0.0/16), private subnets (10.0.1.0/24, 10.0.2.0/24), multi-AZ MySQL RDS
+rds/        VPC (10.0.0.0/16), private subnets (10.0.1.0/24, 10.0.2.0/24), MySQL RDS
 infra/      EC2 in public subnet (10.0.3.0/24), security groups, consumes rds/ outputs via remote state
 ```
 
 State lives in Terraform Cloud, not in the repository. RDS sits in private subnets with a security
-group that only admits traffic from within the VPC — it has no public route.
+group that only admits traffic from within the VPC, has `storage_encrypted = true`, a configurable
+backup retention period, and a timestamped final snapshot on destroy unless explicitly skipped.
+
+Subnets are spread across two availability zones and registered in a DB subnet group, so Multi-AZ
+can be switched on without re-architecting the network. It is currently off (`multi_az = false`) —
+this is a study project and the standby instance doubles the bill.
 
 See [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) for the full network layout, and
 [`VPS_vs_CLOUD_COMPARISON.md`](VPS_vs_CLOUD_COMPARISON.md) for the cost and operational comparison
@@ -78,26 +90,34 @@ that motivated building both.
 
 ## Deployment with Ansible
 
-Two roles, one per environment, sharing the same shape:
+Two roles, one per environment:
 
 ```
 ansible/
   staging.yml              → roles/deploy       (VPS)
   production.yml           → roles/deploy_prod  (EC2)
-  roles/*/tasks/
+  roles/deploy/tasks/
     main.yml               orchestration
     backup.yml             snapshot current release before touching it
     health_check.yml       verify the new release answers before declaring success
     rollback.yml           restore the most recent backup
+  roles/deploy_prod/tasks/
+    main.yml               orchestration, with backup and rollback inlined
   roles/*/templates/
     docker-compose.*.yml.j2
     env.j2
 ```
 
-Every deploy takes a timestamped backup first. `rollback.yml` finds the most recent one and
-restores it, and fails loudly rather than silently if no backup exists. Compose files and env
-files are Jinja2 templates rendered per environment, so staging and production cannot drift apart
-by hand-editing.
+Every deploy takes a timestamped backup first. Rollback finds the most recent one and restores it,
+and fails loudly rather than silently if no backup exists.
+
+In production the risky step is the migration, so it runs inside a `block`/`rescue`: if
+`artisan migrate` fails, the rescue restores the backup and then fails the deploy deliberately,
+rather than leaving a half-migrated database behind a running container. Staging additionally has a
+separate health-check task; production does not, which is the main gap between the two.
+
+Compose files and env files are Jinja2 templates rendered per environment, so staging and
+production cannot drift apart by hand-editing.
 
 ---
 
@@ -148,12 +168,15 @@ Staging database passwords are generated at deploy time with `openssl rand` when
 
 ---
 
-## Why build the same thing four times
+## Why keep both
 
 The point was to feel the trade-offs rather than read about them. A VPS is cheaper and simpler
 until you need a second machine. Terraform costs more up front and pays for itself the first time
 an environment has to be rebuilt from nothing. Ansible is the right tool for "configure this host"
 and the wrong one for "create this host." Kubernetes solves problems this application does not
-have yet.
+have yet, which is why its manifests stayed out of the pipeline.
+
+Running both targets from one pipeline meant every claim could be checked against a real deploy
+instead of a blog post.
 
 `VPS_vs_CLOUD_COMPARISON.md` has the numbers behind each of those claims.
