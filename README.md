@@ -1,5 +1,9 @@
 # Laravel Cloud Migration
 
+> **CI/CD runs on GitLab.** GitHub does not execute `.gitlab-ci.yml`, so no workflows run here.
+> The pipeline definition is [`.gitlab-ci.yml`](.gitlab-ci.yml), and the runs themselves are at
+> [gitlab.com/mohamedaziz.hadjkacem21/laraveldevops](https://gitlab.com/mohamedaziz.hadjkacem21/laraveldevops/-/pipelines).
+
 Taking one Laravel application from a hand-managed VPS to infrastructure provisioned entirely in
 Terraform on AWS, and keeping both targets alive side by side so the trade-offs can be measured
 rather than guessed.
